@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#0b3a5b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Door Log</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&family=Source+Sans+3:wght@400;600&display=swap">
+<style>
+/* Layout: full-screen map, slim header, floating controls, bottom sheet for each door. */
+:root{
+  --navy:#0b3a5b; --ink:#13222e; --muted:#5d6f7c; --line:#d6e0e6; --panel:#ffffff; --bg:#eef3f6;
+  --accent:#0f8fb8;
+  --s-nothome:#8a96a0; --s-no:#d0453b; --s-int:#e6a417; --s-booked:#1f9d55;
+  --display:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --safe-b:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px);
+}
+@media (prefers-color-scheme: dark){:root{
+  --ink:#e6eef3; --muted:#9fb1bd; --line:#2a3b47; --panel:#15222c; --bg:#0d171e; --accent:#3ab6dc; color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:16px/1.4 var(--body);color:var(--ink);background:var(--bg);overflow:hidden;-webkit-tap-highlight-color:transparent}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+
+header{position:fixed;top:0;left:0;right:0;z-index:1000;background:var(--navy);color:#fff;
+  padding:calc(var(--safe-t) + 8px) max(14px,env(safe-area-inset-right)) 8px max(14px,env(safe-area-inset-left));
+  display:flex;align-items:center;gap:10px}
+header h1{font:700 20px/1 var(--display);letter-spacing:.02em;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header h1 small{font:600 12px var(--body);opacity:.7;letter-spacing:.06em;text-transform:uppercase;margin-left:6px}
+.tally{display:flex;gap:6px}
+.tally span{display:flex;align-items:center;gap:4px;font:700 15px var(--display);font-variant-numeric:tabular-nums;background:rgba(255,255,255,.12);padding:3px 8px;border-radius:999px}
+.tally i{width:9px;height:9px;border-radius:50%;display:block}
+
+#map{position:fixed;inset:0;z-index:1}
+.leaflet-top{top:calc(var(--safe-t) + 52px)}
+
+.fabs{position:fixed;right:max(12px,env(safe-area-inset-right));bottom:calc(var(--safe-b) + 18px);z-index:1000;display:flex;flex-direction:column;gap:10px}
+.fab{width:52px;height:52px;border-radius:50%;border:0;background:var(--panel);color:var(--ink);box-shadow:0 3px 12px rgba(0,0,0,.25);display:grid;place-items:center}
+.fab svg{width:24px;height:24px}
+.fab.primary{background:var(--navy);color:#fff}
+.fab.on{background:var(--accent);color:#fff}
+
+.hint{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--safe-b) + 24px);z-index:999;background:rgba(11,58,91,.92);color:#fff;
+  padding:9px 14px;border-radius:999px;font-size:14px;white-space:nowrap;pointer-events:none;max-width:calc(100% - 150px);overflow:hidden;text-overflow:ellipsis}
+.toast{position:fixed;left:50%;top:calc(var(--safe-t) + 64px);transform:translateX(-50%);z-index:3000;background:var(--ink);color:var(--panel);padding:10px 16px;border-radius:10px;font-size:15px;max-width:90vw;box-shadow:0 4px 16px rgba(0,0,0,.3)}
+
+/* Bottom sheet */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:1500}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:2000;background:var(--panel);border-radius:18px 18px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.25);
+  max-height:88%;overflow:auto;padding:8px max(16px,env(safe-area-inset-right)) calc(var(--safe-b) + 18px) max(16px,env(safe-area-inset-left));
+  max-width:560px;margin:0 auto}
+.grab{width:42px;height:5px;border-radius:3px;background:var(--line);margin:2px auto 10px}
+.sheet h2{font:700 22px/1.15 var(--display);margin:0;text-wrap:balance}
+.sub{color:var(--muted);font-size:14px;margin-top:2px}
+.row{display:flex;gap:8px;align-items:center}
+.lbl{display:block;font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+.status{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.status button{border:2px solid var(--line);background:transparent;border-radius:12px;padding:12px 8px;font:700 17px var(--display);display:flex;align-items:center;justify-content:center;gap:8px;min-height:54px}
+.status button i{width:12px;height:12px;border-radius:50%}
+.status button[aria-pressed="true"]{border-color:currentColor;background:color-mix(in srgb,currentColor 12%,transparent)}
+.st-nothome{color:var(--s-nothome)} .st-no{color:var(--s-no)} .st-int{color:#b47d00} .st-booked{color:var(--s-booked)}
+@media (prefers-color-scheme: dark){.st-int{color:var(--s-int)}}
+.status button span{color:var(--ink)}
+input,select,textarea{width:100%;border:1.5px solid var(--line);background:var(--bg);border-radius:10px;padding:11px 12px;font-size:16px}
+textarea{min-height:70px;resize:vertical}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid3{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid3>:first-child{grid-column:1/-1}
+.grid2>*,.grid3>*{min-width:0}
+input,select{min-width:0}
+.booking{border:2px solid var(--s-booked);border-radius:14px;padding:4px 12px 12px;margin-top:14px}
+.btn{border:0;border-radius:12px;padding:13px 16px;font:700 17px var(--display);letter-spacing:.02em;min-height:50px}
+.btn.main{background:var(--navy);color:#fff;flex:1}
+.btn.ghost{background:transparent;border:1.5px solid var(--line);color:var(--ink)}
+.btn.danger{background:transparent;color:var(--s-no);border:1.5px solid var(--line)}
+.btn.cal{background:var(--s-booked);color:#fff;flex:1;text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center}
+.actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.calbox{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+.meta{font-size:13px;color:var(--muted);margin-top:12px}
+
+/* List panel */
+.panel{position:fixed;inset:0;z-index:2500;background:var(--bg);display:flex;flex-direction:column}
+.panel header{position:static}
+.panel .body{flex:1;overflow:auto;padding:12px max(16px,env(safe-area-inset-right)) calc(var(--safe-b) + 24px) max(16px,env(safe-area-inset-left))}
+.filters{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.filters button{border:1.5px solid var(--line);background:var(--panel);border-radius:999px;padding:6px 12px;white-space:nowrap;font-weight:600;font-size:14px}
+.filters button[aria-pressed="true"]{background:var(--navy);color:#fff;border-color:var(--navy)}
+.list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.item{display:flex;gap:10px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;text-align:left;width:100%}
+.item i{width:12px;height:12px;border-radius:50%;margin-top:5px;flex:none}
+.item b{display:block;font-weight:600}
+.item small{color:var(--muted);display:block}
+.empty{color:var(--muted);text-align:center;padding:30px 10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px 14px 14px;margin-top:18px}
+.card h3{font:700 18px var(--display);margin:12px 0 0}
+.close{background:transparent;border:0;color:#fff;font:700 16px var(--display);padding:6px 4px}
+
+.me-dot{width:18px;height:18px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 6px rgba(26,115,232,.25)}
+.leaflet-container{font-family:var(--body);background:var(--bg)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Door Log<small id="repLabel"></small></h1>
+  <div class="tally" aria-label="Today's tally">
+    <span title="Booked"><i style="background:var(--s-booked)"></i><b id="cBooked">0</b></span>
+    <span title="Interested"><i style="background:var(--s-int)"></i><b id="cInt">0</b></span>
+    <span title="Not interested"><i style="background:var(--s-no)"></i><b id="cNo">0</b></span>
+  </div>
+</header>
+
+<div id="map" aria-label="Map"></div>
+<div class="hint" id="hint">Tap a house to log the door</div>
+
+<div class="fabs">
+  <button class="fab" id="layerBtn" aria-label="Switch satellite / street map" title="Satellite view">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 13 10 5 10-5"/></svg>
+  </button>
+  <button class="fab" id="listBtn" aria-label="Doors list and settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+  </button>
+  <button class="fab primary" id="locBtn" aria-label="Center on my location">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+  </button>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+<form class="sheet" id="sheet" hidden autocomplete="off">
+  <div class="grab"></div>
+  <h2 id="fAddrTitle">New door</h2>
+  <div class="sub" id="fCoords"></div>
+
+  <label class="lbl" for="fAddr">Address</label>
+  <input id="fAddr" placeholder="Looking up address…">
+
+  <span class="lbl">How did it go?</span>
+  <div class="status" id="statusBtns">
+    <button type="button" class="st-nothome" data-s="nothome" aria-pressed="false"><i style="background:var(--s-nothome)"></i><span>Not home</span></button>
+    <button type="button" class="st-no" data-s="no" aria-pressed="false"><i style="background:var(--s-no)"></i><span>Not interested</span></button>
+    <button type="button" class="st-int" data-s="int" aria-pressed="false"><i style="background:var(--s-int)"></i><span>Interested</span></button>
+    <button type="button" class="st-booked" data-s="booked" aria-pressed="false"><i style="background:var(--s-booked)"></i><span>Booked</span></button>
+  </div>
+
+  <div class="booking" id="booking" hidden>
+    <span class="lbl" style="color:var(--s-booked)">Appointment</span>
+    <div class="grid3">
+      <div><label class="lbl" for="fDate" style="margin-top:0">Day</label><input type="date" id="fDate"></div>
+      <div><label class="lbl" for="fTime">Time</label><input type="time" id="fTime" step="900"></div>
+      <div><label class="lbl" for="fDur">Length</label>
+        <select id="fDur"><option value="30">30 min</option><option value="60">1 hr</option><option value="90">1.5 hr</option><option value="120">2 hr</option><option value="180">3 hr</option></select></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div><label class="lbl" for="fName">Homeowner</label><input id="fName" placeholder="Name"></div>
+    <div><label class="lbl" for="fPhone">Phone</label><input id="fPhone" type="tel" inputmode="tel" placeholder="(555) 555-5555"></div>
+  </div>
+  <label class="lbl" for="fNotes">Notes</label>
+  <textarea id="fNotes" placeholder="Hard water, has a softener, spouse decides, come back Sat…"></textarea>
+
+  <div class="actions">
+    <button type="submit" class="btn main" id="saveBtn">Save door</button>
+    <button type="button" class="btn ghost" id="cancelBtn">Cancel</button>
+  </div>
+
+  <div class="calbox" id="calbox" hidden>
+    <span class="lbl" style="margin-bottom:0">Put it on the calendar</span>
+    <a class="btn cal" id="gcalLink" href="#" target="_blank" rel="noopener">Add to Google Calendar</a>
+    <button type="button" class="btn ghost" id="icsBtn">Download calendar file (.ics)</button>
+  </div>
+
+  <div class="actions" id="delRow" hidden><button type="button" class="btn danger" id="delBtn">Delete this door</button></div>
+  <div class="meta" id="fMeta"></div>
+</form>
+
+<section class="panel" id="panel" hidden>
+  <header><h1>Doors</h1><button class="close" id="panelClose">Back to map</button></header>
+  <div class="body">
+    <div class="filters" id="filters">
+      <button data-f="all" aria-pressed="true">All</button>
+      <button data-f="booked" aria-pressed="false">Booked</button>
+      <button data-f="int" aria-pressed="false">Interested</button>
+      <button data-f="no" aria-pressed="false">Not interested</button>
+      <button data-f="nothome" aria-pressed="false">Not home</button>
+    </div>
+    <div class="list" id="list"></div>
+
+    <div class="card">
+      <h3>Settings</h3>
+      <label class="lbl" for="sRep">Rep name</label>
+      <input id="sRep" placeholder="e.g. Mike">
+      <label class="lbl" for="sOwner">Owner's email (invited to every booking)</label>
+      <input id="sOwner" type="email" placeholder="owner@gmail.com">
+      <label class="lbl" for="sDur">Default appointment length</label>
+      <select id="sDur"><option value="30">30 min</option><option value="60">1 hr</option><option value="90">1.5 hr</option><option value="120">2 hr</option></select>
+      <div class="actions"><button type="button" class="btn ghost" id="csvBtn" style="flex:1">Export all doors (CSV)</button></div>
+    </div>
+  </div>
+</section>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(() => {
+const STATUS = {
+  nothome:{label:"Not home", color:"#8a96a0"},
+  no:{label:"Not interested", color:"#d0453b"},
+  int:{label:"Interested", color:"#e6a417"},
+  booked:{label:"Booked", color:"#1f9d55"},
+};
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+let doors = store.get("doorlog.doors", []);
+let settings = Object.assign({rep:"", owner:"", dur:"90"}, store.get("doorlog.settings", {}));
+const save = () => store.set("doorlog.doors", doors);
+
+/* ---------- map ---------- */
+const map = L.map("map", {zoomControl:false, attributionControl:true}).setView([39.5, -98.35], 4);
+L.control.zoom({position:"topleft"}).addTo(map);
+const street = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:20, maxNativeZoom:19, attribution:"© OpenStreetMap"});
+const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {maxZoom:20, maxNativeZoom:19, attribution:"Imagery © Esri"});
+const satLabels = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}", {maxZoom:20, maxNativeZoom:19});
+let satOn = store.get("doorlog.sat", false);
+function applyLayer(){
+  [street, sat, satLabels].forEach(l => map.removeLayer(l));
+  if (satOn){ sat.addTo(map); satLabels.addTo(map); } else street.addTo(map);
+  $("layerBtn").classList.toggle("on", satOn);
+}
+applyLayer();
+$("layerBtn").onclick = () => { satOn = !satOn; store.set("doorlog.sat", satOn); applyLayer(); };
+
+const markers = new Map();
+function pinIcon(s){
+  const c = STATUS[s]?.color || "#0b3a5b";
+  return L.divIcon({className:"", iconSize:[26,34], iconAnchor:[13,32],
+    html:`<svg width="26" height="34" viewBox="0 0 26 34"><path d="M13 1C6.4 1 1 6.3 1 12.9 1 22 13 33 13 33s12-11 12-20.1C25 6.3 19.6 1 13 1Z" fill="${c}" stroke="#fff" stroke-width="2"/><circle cx="13" cy="13" r="4.5" fill="#fff"/></svg>`});
+}
+function drawDoor(d){
+  let m = markers.get(d.id);
+  if (!m){ m = L.marker([d.lat, d.lng]).addTo(map); m.on("click", () => openSheet(d.id)); markers.set(d.id, m); }
+  m.setIcon(pinIcon(d.status));
+}
+doors.forEach(drawDoor);
+
+/* ---------- location ---------- */
+let me = null, meMarker = null, centered = false;
+const meIcon = L.divIcon({className:"", html:'<div class="me-dot"></div>', iconSize:[18,18], iconAnchor:[9,9]});
+function startGeo(){
+  if (!("geolocation" in navigator)){ toast("This browser can't share location. Pan the map by hand."); return; }
+  navigator.geolocation.watchPosition(p => {
+    me = [p.coords.latitude, p.coords.longitude];
+    if (!meMarker) meMarker = L.marker(me, {icon:meIcon, interactive:false, zIndexOffset:1000}).addTo(map);
+    else meMarker.setLatLng(me);
+    if (!centered){ centered = true; map.setView(me, 18); }
+  }, err => {
+    toast(err.code === 1 ? "Location is blocked. Allow location for this site to see where you are." : "Can't find your location right now.");
+  }, {enableHighAccuracy:true, maximumAge:10000, timeout:20000});
+}
+$("locBtn").onclick = () => { if (me) map.setView(me, Math.max(map.getZoom(), 18)); else { centered = false; startGeo(); } };
+startGeo();
+
+/* ---------- tap to log ---------- */
+map.on("click", e => {
+  const d = {id:"d"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), lat:e.latlng.lat, lng:e.latlng.lng,
+    address:"", status:"", name:"", phone:"", notes:"", appt:null, rep:settings.rep, createdAt:new Date().toISOString(), updatedAt:null, _new:true};
+  openSheet(null, d);
+  reverseGeocode(d);
+});
+async function reverseGeocode(d){
+  try{
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=${d.lat}&lon=${d.lng}`, {headers:{"Accept-Language":"en"}});
+    const j = await r.json(); const a = j.address || {};
+    const line1 = [a.house_number, a.road].filter(Boolean).join(" ");
+    const city = a.city || a.town || a.village || a.hamlet || a.suburb || "";
+    const addr = [line1, city, a.state ? a.state + (a.postcode ? " " + a.postcode : "") : a.postcode].filter(Boolean).join(", ") || j.display_name || "";
+    if (editing && editing.id === d.id && !$("fAddr").value){ $("fAddr").value = addr; $("fAddrTitle").textContent = line1 || addr || "New door"; }
+  } catch { if (editing && editing.id === d.id) $("fAddr").placeholder = "Type the address"; }
+}
+
+/* ---------- sheet ---------- */
+let editing = null, tempMarker = null;
+function openSheet(id, fresh){
+  editing = fresh ? fresh : {...doors.find(x => x.id === id)};
+  const d = editing;
+  if (fresh){ tempMarker = L.marker([d.lat, d.lng], {icon:pinIcon(""), interactive:false}).addTo(map); }
+  $("fAddrTitle").textContent = d.address ? d.address.split(",")[0] : "New door";
+  $("fCoords").textContent = `${d.lat.toFixed(5)}, ${d.lng.toFixed(5)}`;
+  $("fAddr").value = d.address; $("fName").value = d.name; $("fPhone").value = d.phone; $("fNotes").value = d.notes;
+  const appt = d.appt ? new Date(d.appt.start) : nextSlot();
+  $("fDate").value = ymd(appt); $("fTime").value = hm(appt); $("fDur").value = String(d.appt?.dur || settings.dur);
+  setStatus(d.status);
+  $("calbox").hidden = !(d.status === "booked" && d.appt && !d._new);
+  if (!$("calbox").hidden) fillCal(d);
+  $("cancelBtn").textContent = $("calbox").hidden ? "Cancel" : "Done";
+  $("delRow").hidden = !!d._new;
+  $("fMeta").textContent = d.updatedAt ? `Last updated ${new Date(d.updatedAt).toLocaleString()}${d.rep ? " by " + d.rep : ""}` : "";
+  $("sheet").hidden = false; $("scrim").hidden = false; $("hint").hidden = true;
+  map.panTo([d.lat, d.lng]);
+}
+function closeSheet(){
+  $("sheet").hidden = true; $("scrim").hidden = true; editing = null;
+  if (tempMarker){ map.removeLayer(tempMarker); tempMarker = null; }
+}
+function setStatus(s){
+  editing.status = s;
+  document.querySelectorAll("#statusBtns button").forEach(b => b.setAttribute("aria-pressed", b.dataset.s === s));
+  $("booking").hidden = s !== "booked";
+  $("saveBtn").textContent = s === "booked" ? "Save & book" : "Save door";
+}
+$("statusBtns").onclick = e => { const b = e.target.closest("button"); if (b) setStatus(b.dataset.s); };
+$("cancelBtn").onclick = closeSheet; $("scrim").onclick = closeSheet;
+
+$("sheet").onsubmit = e => {
+  e.preventDefault();
+  const d = editing;
+  if (!d.status){ toast("Pick how it went first."); return; }
+  d.address = $("fAddr").value.trim(); d.name = $("fName").value.trim(); d.phone = $("fPhone").value.trim(); d.notes = $("fNotes").value.trim();
+  if (d.status === "booked"){
+    if (!$("fDate").value || !$("fTime").value){ toast("Pick a day and time for the appointment."); return; }
+    d.appt = {start:new Date(`${$("fDate").value}T${$("fTime").value}`).toISOString(), dur:+$("fDur").value};
+  } else d.appt = null;
+  d.updatedAt = new Date().toISOString(); d.rep = settings.rep || d.rep;
+  const wasNew = d._new; delete d._new;
+  const i = doors.findIndex(x => x.id === d.id);
+  if (i >= 0) doors[i] = d; else doors.push(d);
+  save(); drawDoor(d); tally();
+  if (tempMarker){ map.removeLayer(tempMarker); tempMarker = null; }
+  if (d.status === "booked"){
+    // keep the sheet open so the rep can push it to the calendar
+    editing = {...d}; $("calbox").hidden = false; $("cancelBtn").textContent = "Done"; fillCal(d); $("delRow").hidden = false;
+    $("fMeta").textContent = `Booked ${fmtAppt(d.appt)}`;
+    toast("Booked. Now add it to the calendar.");
+    $("calbox").scrollIntoView({behavior:"smooth", block:"nearest"});
+  } else { closeSheet(); toast(wasNew ? `Saved: ${STATUS[d.status].label}` : "Door updated"); }
+};
+$("delBtn").onclick = () => {
+  const b = $("delBtn");
+  if (b.dataset.confirm !== "1"){ b.dataset.confirm = "1"; b.textContent = "Tap again to delete"; setTimeout(() => { b.dataset.confirm = ""; b.textContent = "Delete this door"; }, 3000); return; }
+  b.dataset.confirm = ""; b.textContent = "Delete this door";
+  const id = editing.id; doors = doors.filter(x => x.id !== id); save();
+  const m = markers.get(id); if (m){ map.removeLayer(m); markers.delete(id); }
+  closeSheet(); tally(); toast("Door deleted");
+};
+
+/* ---------- calendar ---------- */
+const z = n => String(n).padStart(2, "0");
+const ymd = d => `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
+const hm = d => `${z(d.getHours())}:${z(d.getMinutes())}`;
+const utc = d => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+function nextSlot(){ const d = new Date(); d.setDate(d.getDate()+1); d.setHours(10,0,0,0); return d; }
+function fmtAppt(a){ const s = new Date(a.start); return s.toLocaleString([], {weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit"}); }
+function evText(d){
+  const title = `Water system appt: ${d.name || d.address.split(",")[0] || "New customer"}`;
+  const details = [d.name && `Homeowner: ${d.name}`, d.phone && `Phone: ${d.phone}`, d.notes && `Notes: ${d.notes}`, d.rep && `Booked by: ${d.rep}`,
+    `Map: https://maps.google.com/?q=${d.lat},${d.lng}`].filter(Boolean).join("\n");
+  const s = new Date(d.appt.start), e = new Date(s.getTime() + d.appt.dur*60000);
+  return {title, details, s, e, loc: d.address || `${d.lat},${d.lng}`};
+}
+function fillCal(d){
+  const t = evText(d);
+  const p = new URLSearchParams({action:"TEMPLATE", text:t.title, dates:`${utc(t.s)}/${utc(t.e)}`, details:t.details, location:t.loc});
+  if (settings.owner) p.set("add", settings.owner);
+  $("gcalLink").href = "https://calendar.google.com/calendar/render?" + p.toString();
+}
+function icsFor(d){
+  const t = evText(d); const esc = s => s.replace(/\\/g,"\\\\").replace(/\n/g,"\\n").replace(/([,;])/g,"\\$1");
+  const lines = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Door Log//EN","METHOD:PUBLISH","BEGIN:VEVENT",
+    `UID:${d.id}@doorlog`, `DTSTAMP:${utc(new Date())}`, `DTSTART:${utc(t.s)}`, `DTEND:${utc(t.e)}`,
+    `SUMMARY:${esc(t.title)}`, `LOCATION:${esc(t.loc)}`, `DESCRIPTION:${esc(t.details)}`, `GEO:${d.lat};${d.lng}`];
+  if (settings.owner) lines.push(`ATTENDEE;CN=Owner;RSVP=TRUE:mailto:${settings.owner}`);
+  lines.push("BEGIN:VALARM","TRIGGER:-PT1H","ACTION:DISPLAY","DESCRIPTION:Water system appointment","END:VALARM","END:VEVENT","END:VCALENDAR");
+  return lines.join("\r\n");
+}
+function download(name, text, type){
+  const url = URL.createObjectURL(new Blob([text], {type}));
+  const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+$("icsBtn").onclick = () => { const d = doors.find(x => x.id === editing.id); if (d?.appt) download(`appointment-${ymd(new Date(d.appt.start))}.ics`, icsFor(d), "text/calendar"); };
+
+/* ---------- tally, list, settings ---------- */
+function tally(){
+  const today = ymd(new Date());
+  const t = s => doors.filter(d => d.status === s && d.updatedAt && ymd(new Date(d.updatedAt)) === today).length;
+  $("cBooked").textContent = t("booked"); $("cInt").textContent = t("int"); $("cNo").textContent = t("no");
+  $("repLabel").textContent = settings.rep ? "· " + settings.rep : "";
+}
+tally();
+let filter = "all";
+function renderList(){
+  const rows = doors.filter(d => filter === "all" || d.status === filter).sort((a,b) => (b.updatedAt||"").localeCompare(a.updatedAt||""));
+  const L_ = $("list"); L_.innerHTML = "";
+  if (!rows.length){ L_.innerHTML = `<div class="empty">${doors.length ? "No doors with this status yet." : "No doors logged yet. Go back to the map and tap a house."}</div>`; return; }
+  rows.forEach(d => {
+    const b = document.createElement("button"); b.className = "item"; b.type = "button";
+    const i = document.createElement("i"); i.style.background = STATUS[d.status].color;
+    const t = document.createElement("div"); t.style.minWidth = "0";
+    const nm = document.createElement("b"); nm.textContent = d.address || `${d.lat.toFixed(5)}, ${d.lng.toFixed(5)}`;
+    const s1 = document.createElement("small");
+    s1.textContent = STATUS[d.status].label + (d.appt ? " · " + fmtAppt(d.appt) : "") + (d.name ? " · " + d.name : "");
+    const s2 = document.createElement("small"); s2.textContent = new Date(d.updatedAt).toLocaleString([], {month:"short", day:"numeric", hour:"numeric", minute:"2-digit"}) + (d.rep ? " · " + d.rep : "");
+    t.append(nm, s1, s2); b.append(i, t);
+    b.onclick = () => { $("panel").hidden = true; map.setView([d.lat, d.lng], 19); openSheet(d.id); };
+    L_.appendChild(b);
+  });
+}
+$("filters").onclick = e => { const b = e.target.closest("button"); if (!b) return; filter = b.dataset.f;
+  document.querySelectorAll("#filters button").forEach(x => x.setAttribute("aria-pressed", x === b)); renderList(); };
+$("listBtn").onclick = () => { $("sRep").value = settings.rep; $("sOwner").value = settings.owner; $("sDur").value = settings.dur; renderList(); $("panel").hidden = false; };
+$("panelClose").onclick = () => { $("panel").hidden = true; };
+["sRep","sOwner","sDur"].forEach(id => $(id).addEventListener("change", () => {
+  settings = {rep:$("sRep").value.trim(), owner:$("sOwner").value.trim(), dur:$("sDur").value}; store.set("doorlog.settings", settings); tally(); toast("Settings saved");
+}));
+$("csvBtn").onclick = () => {
+  const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const head = ["Address","Status","Homeowner","Phone","Appointment","Length (min)","Notes","Rep","Updated","Lat","Lng"];
+  const rows = doors.map(d => [d.address, STATUS[d.status].label, d.name, d.phone, d.appt ? new Date(d.appt.start).toLocaleString() : "", d.appt?.dur || "", d.notes, d.rep, d.updatedAt, d.lat, d.lng].map(q).join(","));
+  download(`doors-${ymd(new Date())}.csv`, [head.map(q).join(","), ...rows].join("\n"), "text/csv");
+};
+
+/* ---------- misc ---------- */
+let toastT;
+function toast(msg){ const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3200); }
+if (doors.length) setTimeout(() => $("hint").hidden = true, 6000);
+})();
+</script>
+</body>
+</html>

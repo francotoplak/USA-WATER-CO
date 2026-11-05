@@ -75,6 +75,12 @@ button{cursor:pointer;-webkit-user-select:none;user-select:none}
 .brand{flex:1;min-width:0;line-height:1.1}
 .brand b{display:block;font:700 19px var(--display);letter-spacing:.01em}
 .brand small{display:block;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sync{display:inline-block;width:9px;height:9px;border-radius:50%;margin-left:7px;vertical-align:2px;background:var(--faint)}
+.sync[data-s="ok"]{background:var(--s-booked)} .sync[data-s="busy"]{background:var(--brand-2);animation:blink 1s ease-in-out infinite}
+.sync[data-s="pending"]{background:var(--s-int)} .sync[data-s="error"]{background:var(--s-no)}
+@keyframes blink{50%{opacity:.35}}
+.syncline{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:14px;color:var(--muted)}
+.syncline .sync{margin:0;flex:none}
 .today{display:flex;gap:6px}
 .today div{text-align:center;min-width:44px;padding:4px 6px;border-radius:10px;background:var(--surface-2)}
 .today b{display:block;font:700 20px/1 var(--display);font-variant-numeric:tabular-nums}
@@ -308,7 +314,7 @@ textarea{min-height:76px;resize:none}
 
 <div class="top">
   <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2.5C9 7 6 10.4 6 14a6 6 0 0 0 12 0c0-3.6-3-7-6-11.5Z"/></svg></div>
-  <div class="brand"><b>Door Log</b><small id="whoLine">USA Water Co</small></div>
+  <div class="brand"><b>Door Log<i class="sync" id="syncDot" hidden title="Sync status"></i></b><small id="whoLine">USA Water Co</small></div>
   <div class="today" aria-label="Today">
     <div><b id="tDoors">0</b><span>Doors</span></div>
     <div class="bk"><b id="tBooked">0</b><span>Booked</span></div>
@@ -362,7 +368,7 @@ textarea{min-height:76px;resize:none}
 <section class="view" id="v-doors" aria-label="Doors">
   <div class="view-in">
     <h1>Doors</h1>
-    <p class="lede" id="doorsLede">Everything logged on this phone.</p>
+    <p class="lede" id="doorsLede">Everything logged on this device.</p>
     <div class="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input id="q" type="search" placeholder="Search address, name, phone or notes" autocomplete="off">
@@ -376,7 +382,7 @@ textarea{min-height:76px;resize:none}
 <section class="view" id="v-settings" aria-label="Settings">
   <div class="view-in">
     <h1>Settings</h1>
-    <p class="lede">Saved on this phone.</p>
+    <p class="lede">Saved on this device.</p>
     <div class="sec">You</div>
     <div class="card settings">
       <label class="field"><span>Your name</span><input id="sRep" placeholder="e.g. Mike Torres" autocomplete="name"></label>
@@ -391,11 +397,19 @@ textarea{min-height:76px;resize:none}
       <label class="field"><span>Default appointment length</span>
         <select id="sDur"><option value="30">30 minutes</option><option value="60">1 hour</option><option value="90">1.5 hours</option><option value="120">2 hours</option></select></label>
     </div>
+    <div class="sec">Team sync</div>
+    <div class="card settings">
+      <p class="help" style="margin-top:14px">Connect every tablet to the company's Google Sheet so doors and bookings show up on all of them. <a href="https://github.com/francotoplak/usa-water-co/blob/main/SETUP.md" target="_blank" rel="noopener" style="color:var(--brand-2);font-weight:600">Setup steps</a></p>
+      <label class="field"><span>Sync link</span><input id="sUrl" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+      <label class="field"><span>Team PIN</span><input id="sPin" inputmode="numeric" placeholder="PIN from the owner" autocomplete="off"></label>
+      <div class="syncline"><i class="sync" id="syncDot2"></i><span id="syncTxt">Not connected. Doors stay on this device.</span></div>
+      <div class="stack-btns"><button class="btn soft press" id="syncBtn" type="button">Sync now</button></div>
+    </div>
     <div class="sec">Data</div>
     <div class="card settings">
       <div class="stack-btns">
         <button class="btn soft press" id="csvBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export all doors (spreadsheet)</button>
-        <button class="btn danger press" id="wipeBtn" type="button">Erase all doors on this phone</button>
+        <button class="btn danger press" id="wipeBtn" type="button">Erase all doors on this device</button>
       </div>
     </div>
     <p class="meta">Door Log · USA Water Co</p>
@@ -443,6 +457,7 @@ textarea{min-height:76px;resize:none}
         <div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div>
         <h3>Appointment booked</h3>
         <p id="doneWhen"></p>
+        <p id="doneCal" hidden style="color:var(--s-booked);font-weight:600;margin-top:8px">It's going on the owner's Google Calendar automatically.</p>
       </div>
       <div class="stack-btns">
         <a class="btn go press" id="calendlyLink" href="#" target="_blank" rel="noopener" hidden>Book it in Calendly</a>
@@ -711,7 +726,7 @@ function commit(){
   const isNew = d._new; delete d._new;
   const i = doors.findIndex(x => x.id === d.id);
   if (i >= 0) doors[i] = d; else doors.push(d);
-  saveDoors();
+  saveDoors(); queueChange(d);
   if (tempMarker){ map.removeLayer(tempMarker); tempMarker = null; }
   if (dayFilter && dayFilter.key === dayKey(now)) dayFilter.ids.add(d.id);
   drawDoor(d, isNew);
@@ -727,8 +742,9 @@ function commit(){
 }
 function undo(){
   if (!prevSnapshot) return;
-  if (prevSnapshot.__new){ doors = doors.filter(x => x.id !== prevSnapshot.__new); removeMarker(prevSnapshot.__new); }
-  else { const i = doors.findIndex(x => x.id === prevSnapshot.id); if (i >= 0) doors[i] = prevSnapshot; else doors.push(prevSnapshot); drawDoor(prevSnapshot); }
+  const now = new Date().toISOString();
+  if (prevSnapshot.__new){ doors = doors.filter(x => x.id !== prevSnapshot.__new); removeMarker(prevSnapshot.__new); queueChange({id:prevSnapshot.__new, deleted:true, updatedAt:now}); }
+  else { prevSnapshot.updatedAt = now; const i = doors.findIndex(x => x.id === prevSnapshot.id); if (i >= 0) doors[i] = prevSnapshot; else doors.push(prevSnapshot); drawDoor(prevSnapshot); queueChange(prevSnapshot); }
   prevSnapshot = null; saveDoors(); refreshCounts(); toast("Undone");
 }
 $("delBtn").onclick = () => {
@@ -736,7 +752,7 @@ $("delBtn").onclick = () => {
   if (b.dataset.confirm !== "1"){ b.dataset.confirm = "1"; b.textContent = "Tap again to delete"; setTimeout(() => { b.dataset.confirm = ""; b.textContent = "Delete this door"; }, 3000); return; }
   b.dataset.confirm = ""; b.textContent = "Delete this door";
   const id = editing.id; prevSnapshot = JSON.parse(JSON.stringify(doors.find(x => x.id === id)));
-  doors = doors.filter(x => x.id !== id); saveDoors(); removeMarker(id);
+  doors = doors.filter(x => x.id !== id); saveDoors(); removeMarker(id); queueChange({id, deleted:true, updatedAt:new Date().toISOString()});
   closeSheet(); refreshCounts(); toast("Door deleted", "", true);
 };
 
@@ -764,6 +780,7 @@ function showDone(d){
       $("calendlyLink").href = u.toString(); $("calendlyLink").hidden = false; $("gcalLink").className = "btn soft press";
     } catch { $("calendlyLink").hidden = true; $("gcalLink").className = "btn go press"; }
   } else { $("calendlyLink").hidden = true; $("gcalLink").className = "btn go press"; }
+  $("doneCal").hidden = !(sync.url && sync.pin && sync.calendar);
   $("formPart").hidden = true; $("donePart").hidden = false; $("sheetBody").scrollTop = 0;
   setTitle(d);
 }
@@ -921,7 +938,7 @@ function renderDoors(){
   const rows = doors.filter(d => (filter === "all" || d.status === filter) &&
     (!q || [d.address, d.name, d.phone, d.notes].join(" ").toLowerCase().includes(q)))
     .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
-  $("doorsLede").textContent = `${doors.length} ${doors.length === 1 ? "door" : "doors"} logged on this phone.`;
+  $("doorsLede").textContent = `${doors.length} ${doors.length === 1 ? "door" : "doors"} logged on this device.`;
   if (!rows.length){
     $("list").innerHTML = `<div class="empty"><b>${doors.length ? "Nothing matches" : "No doors yet"}</b>${doors.length ? "Try another search or filter." : "Go to the map and tap a house to log your first door."}</div>`;
     return;
@@ -942,11 +959,20 @@ $("list").onclick = e => { const r = e.target.closest(".row"); if (!r) return; c
   if (d){ switchView("map"); map.setView([d.lat, d.lng], 19, {animate:false}); openDoor(d.id); } };
 
 /* settings */
-function loadSettings(){ $("sRep").value = settings.rep; $("sOwner").value = settings.owner; $("sCalendly").value = settings.calendly; $("sDur").value = settings.dur; }
+function loadSettings(){ $("wipeBtn").hidden = !!(sync.url && sync.pin); $("sUrl").value = sync.url; $("sPin").value = sync.pin; $("sRep").value = settings.rep; $("sOwner").value = settings.owner; $("sCalendly").value = settings.calendly; $("sDur").value = settings.dur; }
 ["sRep","sOwner","sCalendly","sDur"].forEach(id => $(id).addEventListener("change", () => {
   settings = {rep:$("sRep").value.trim(), owner:$("sOwner").value.trim(), calendly:$("sCalendly").value.trim(), dur:$("sDur").value};
   store.set("doorlog.settings", settings); refreshCounts(); toast("Saved");
 }));
+["sUrl","sPin"].forEach(id => $(id).addEventListener("change", () => {
+  const url = $("sUrl").value.trim(), pin = $("sPin").value.trim();
+  const changed = url !== sync.url || pin !== sync.pin;
+  sync.url = url; sync.pin = pin; store.set("doorlog.sync", {url, pin});
+  $("wipeBtn").hidden = !!(url && pin);
+  if (changed && url && pin){ sync.cursor = 0; store.set("doorlog.cursor", 0); doors.forEach(d => outbox[d.id] = JSON.parse(JSON.stringify(d))); saveOutbox(); syncNow(true); }
+  else setSync(url && pin ? "pending" : "off");
+}));
+$("syncBtn").onclick = () => syncNow(true);
 $("csvBtn").onclick = () => {
   const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const head = ["Address","Status","Homeowner","Phone","Appointment","Length (min)","Notes","Rep","First knocked","Last updated","Latitude","Longitude"];
@@ -956,8 +982,12 @@ $("csvBtn").onclick = () => {
 };
 $("wipeBtn").onclick = () => {
   const b = $("wipeBtn");
-  if (b.dataset.confirm !== "1"){ b.dataset.confirm = "1"; b.textContent = `Tap again to erase ${doors.length} doors`; setTimeout(() => { b.dataset.confirm = ""; b.textContent = "Erase all doors on this phone"; }, 4000); return; }
-  b.dataset.confirm = ""; b.textContent = "Erase all doors on this phone";
+  if (b.dataset.confirm !== "1"){ b.dataset.confirm = "1"; b.textContent = `Tap again to erase ${doors.length} doors`; setTimeout(() => { b.dataset.confirm = ""; b.textContent = "Erase all doors on this device"; }, 4000); return; }
+  b.dataset.confirm = ""; b.textContent = "Erase all doors on this device";
+  if (sync.url && sync.pin){
+    // connected: deletes go to every device
+    const now = new Date().toISOString(); doors.forEach(d => queueChange({id:d.id, deleted:true, updatedAt:now}));
+  }
   doors.forEach(d => removeMarker(d.id)); doors = []; saveDoors(); refreshCounts(); toast("All doors erased");
 };
 
@@ -974,8 +1004,92 @@ $("toastUndo").onclick = () => { $("toast").classList.remove("show"); undo(); };
 function hideHint(){ $("hint").classList.add("gone"); store.set("doorlog.hinted", true); }
 if (store.get("doorlog.hinted", false) || doors.length) $("hint").classList.add("gone");
 
+/* ================= team sync (Google Sheet via Apps Script) ================= */
+const sync = Object.assign({url:"", pin:""}, store.get("doorlog.sync", {}));
+sync.cursor = store.get("doorlog.cursor", 0);
+let outbox = store.get("doorlog.outbox", {});
+let syncState = "off", lastSync = store.get("doorlog.lastSync", 0), busy = false, syncErr = "";
+const saveOutbox = () => store.set("doorlog.outbox", outbox);
+function queueChange(c){
+  if (!sync.url || !sync.pin) return;
+  const copy = JSON.parse(JSON.stringify(c)); delete copy._new;
+  outbox[c.id] = copy; saveOutbox(); setSync("pending");
+  clearTimeout(queueChange.t); queueChange.t = setTimeout(() => syncNow(), 400);
+}
+function setSync(st, err){
+  syncState = st; if (err !== undefined) syncErr = err;
+  const pending = Object.keys(outbox).length;
+  for (const id of ["syncDot","syncDot2"]){ $(id).dataset.s = st; }
+  $("syncDot").hidden = st === "off";
+  const ago = lastSync ? agoText(lastSync) : "";
+  $("syncTxt").textContent =
+    st === "off" ? "Not connected. Doors stay on this device." :
+    st === "busy" ? "Syncing…" :
+    st === "error" ? `${syncErr || "Can't reach the sheet right now."}${pending ? ` ${pending} ${pending === 1 ? "change" : "changes"} waiting.` : ""}` :
+    st === "pending" ? `${pending} ${pending === 1 ? "change" : "changes"} waiting to sync.` :
+    `Connected. Last synced ${ago || "just now"}.`;
+  $("syncDot").title = $("syncTxt").textContent;
+}
+function agoText(t){ const s = Math.round((Date.now() - t)/1000); return s < 10 ? "just now" : s < 60 ? `${s} seconds ago` : s < 3600 ? `${Math.round(s/60)} min ago` : new Date(t).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}); }
+async function syncNow(manual){
+  if (!sync.url || !sync.pin){ setSync("off"); if (manual) toast("Add the sync link and team PIN first."); return; }
+  if (busy) return; busy = true; setSync("busy");
+  try{
+    // 1. push local changes
+    const sent = Object.values(outbox);
+    if (sent.length){
+      const r = await fetch(sync.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({key:sync.pin, changes:sent})});
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error === "pin" ? "Wrong team PIN." : "The sheet rejected the update.");
+      for (const c of sent){ if (outbox[c.id] && outbox[c.id].updatedAt === c.updatedAt) delete outbox[c.id]; }
+      saveOutbox();
+    }
+    // 2. pull everyone else's changes
+    const u = new URL(sync.url); u.searchParams.set("key", sync.pin); u.searchParams.set("since", String(sync.cursor || 0));
+    const r2 = await fetch(u.toString()); const j2 = await r2.json();
+    if (!j2.ok) throw new Error(j2.error === "pin" ? "Wrong team PIN." : "The sheet didn't answer correctly.");
+    applyRemote(j2.doors || []);
+    sync.cursor = j2.now; store.set("doorlog.cursor", j2.now);
+    sync.calendar = !!j2.calendar; store.set("doorlog.serverCal", sync.calendar);
+    lastSync = Date.now(); store.set("doorlog.lastSync", lastSync);
+    busy = false; setSync(Object.keys(outbox).length ? "pending" : "ok", "");
+    if (manual) toast("Synced");
+  } catch (e){
+    busy = false;
+    setSync("error", e instanceof TypeError ? (navigator.onLine === false ? "No internet. Changes will sync when you're back online." : "Can't reach the sheet. Check the sync link.") : e.message);
+    if (manual) toast(syncErr);
+  }
+}
+function applyRemote(list){
+  let changed = false;
+  for (const rd of list){
+    if (!rd || !rd.id || outbox[rd.id]) continue; // our unsent edit wins until it's pushed
+    const i = doors.findIndex(x => x.id === rd.id);
+    if (rd.deleted){
+      if (i >= 0){ doors.splice(i, 1); removeMarker(rd.id); changed = true; }
+      continue;
+    }
+    if (!Array.isArray(rd.history)) rd.history = rd.status ? [{s:rd.status, at:rd.updatedAt}] : [];
+    if (i >= 0){
+      if ((doors[i].updatedAt || "") > (rd.updatedAt || "")) continue;
+      if (JSON.stringify(doors[i]) === JSON.stringify(rd)) continue;
+      doors[i] = rd;
+    } else doors.push(rd);
+    if (dayFilter && rd.history.some(h => dayKey(h.at) === dayFilter.key)) dayFilter.ids.add(rd.id);
+    drawDoor(rd, i < 0); changed = true;
+  }
+  if (changed){ saveDoors(); refreshCounts(); }
+}
+sync.calendar = store.get("doorlog.serverCal", false);
+setInterval(() => { if (document.visibilityState === "visible") syncNow(); }, 15000);
+setInterval(() => { if (syncState === "ok") setSync("ok"); }, 30000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") syncNow(); });
+addEventListener("online", () => syncNow());
+
 saveDoors();
 refreshCounts();
+setSync(sync.url && sync.pin ? (Object.keys(outbox).length ? "pending" : "ok") : "off");
+syncNow();
 })();
 </script>
 </body>

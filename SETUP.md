@@ -23,3 +23,14 @@ Any doors already on a tablet are uploaded when you connect it.
 - To turn off automatic calendar events, change `ADD_TO_CALENDAR` to `false`, then **Deploy → Manage deployments → Edit → Version: New version → Deploy**.
 - If you change the code later, always deploy a **new version** of the same deployment so the link stays the same.
 - Tablets keep working with no signal. Changes wait on the tablet and sync when it's back online (the dot turns orange while changes are waiting).
+
+## Team sign-in and territories
+
+- In **Settings → Team**, add the owner first, then each rep with their own 4-digit PIN. Once a team exists, every tablet asks "Who's knocking today?" and each rep signs in with their PIN. Doors, bookings and the leaderboard are then credited to the right person.
+- Only an owner/manager can add reps or draw territories (**Settings → Territories → Draw a new territory**, then tap the corners of the area on the map).
+- Rep PINs are a convenience to keep people from logging under someone else's name. They're not bank-grade security.
+- The sheet gets **Team** and **Territories** tabs next to **Doors**.
+
+## Updating the script
+
+If you set up the script before November 6, 2026, paste in the latest [`apps-script/Code.gs`](apps-script/Code.gs), then use **Deploy → Manage deployments → Edit → Version: New version → Deploy**. The link stays the same.

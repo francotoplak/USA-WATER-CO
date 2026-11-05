@@ -200,8 +200,8 @@ textarea{min-height:76px;resize:none}
 /* ---------- sheet ---------- */
 .sheet{position:fixed;z-index:1300;left:0;right:0;bottom:0;max-width:560px;margin:0 auto;background:var(--surface);border-radius:24px 24px 0 0;
   box-shadow:0 -10px 40px rgba(10,40,64,.22);max-height:calc(100% - var(--st) - 24px);display:flex;flex-direction:column;
-  transform:translateY(105%);transition:transform .32s var(--ease);will-change:transform}
-.sheet.open{transform:translateY(0)}
+  transform:translateY(105%);visibility:hidden;pointer-events:none;transition:transform .32s var(--ease),visibility 0s .32s;will-change:transform}
+.sheet.open{transform:translateY(0);visibility:visible;pointer-events:auto;transition:transform .32s var(--ease)}
 .sheet.dragging{transition:none}
 .sheet-head{padding:8px 18px 4px;touch-action:none;cursor:grab}
 .grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 12px}
@@ -269,7 +269,37 @@ textarea{min-height:76px;resize:none}
 .toast button[hidden]+span{padding-right:8px}
 
 @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
-@media (min-width:700px){.sheet{bottom:calc(var(--tabs) + 12px);border-radius:24px}}
+/* Tablet: door panel docks on the left so the map stays visible; wider content pages */
+@media (min-width:768px){
+  :root{--panel-w:420px;--tabs:70px}
+  .top{left:calc(var(--sl) + 16px);right:auto;width:var(--panel-w);margin:0;top:calc(var(--st) + 16px)}
+  .sheet{left:calc(var(--sl) + 16px);right:auto;top:calc(var(--st) + 104px);bottom:calc(var(--tabs) + var(--sb) + 16px);width:var(--panel-w);max-height:none;margin:0;
+    border-radius:24px;transform:translateX(calc(-100% - 40px));box-shadow:var(--shadow)}
+  .sheet.open{transform:none}
+  .sheet-head{cursor:default;padding-top:18px}
+  .grab{display:none}
+  .dayfilter{top:calc(var(--st) + 22px);left:calc(var(--sl) + var(--panel-w) + 32px);transform:none}
+  .ctrls{right:calc(var(--sr) + 16px);bottom:calc(var(--tabs) + var(--sb) + 20px)}
+  .ctrl{width:56px;height:56px}
+  .zoom .ctrl{height:52px}
+  .hint{left:calc(var(--sl) + 16px)}
+  .toast{left:50%;transform:translate(-50%,30px);max-width:520px}
+  .toast.show{transform:translate(-50%,0)}
+  .tabs{padding-left:max(var(--sl),calc((100% - 640px)/2));padding-right:max(var(--sr),calc((100% - 640px)/2))}
+  .tabs button{flex-direction:row;gap:8px;font-size:14px}
+  .view-in{max-width:980px;padding-top:calc(var(--st) + 32px);padding-left:max(28px,var(--sl));padding-right:max(28px,var(--sr))}
+  .view h1{font-size:38px}
+  .kpis{gap:12px}
+  .kpi{padding:16px 18px 14px}
+  .kpi b{font-size:40px}
+  .bars{height:180px;gap:10px}
+  .bar-labels{gap:10px;font-size:12px}
+  #dayList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+  #dayList .day{margin:0}
+  #dayList .empty{grid-column:1/-1}
+  #v-settings .view-in,#v-doors .view-in{max-width:760px}
+}
+@media (min-width:1200px){#dayList{grid-template-columns:repeat(3,minmax(0,1fr))}}
 </style>
 </head>
 <body>
@@ -594,9 +624,11 @@ function showSheet(d, isNew){
   requestAnimationFrame(() => focusOnMap(d));
 }
 function focusOnMap(d){
-  const h = sheet.getBoundingClientRect().height, H = map.getSize().y;
+  const r = sheet.getBoundingClientRect(), H = map.getSize().y, wide = innerWidth >= 768;
   const zoom = Math.max(map.getZoom(), 17);
-  const pt = map.project([d.lat, d.lng], zoom).add([0, Math.min(h, H*.6)/2 - 20]);
+  // keep the pin visible beside (tablet) or above (phone) the door panel
+  const shift = wide ? [-(r.width + 16)/2, 0] : [0, Math.min(r.height, H*.6)/2 - 20];
+  const pt = map.project([d.lat, d.lng], zoom).add(shift);
   map.flyTo(map.unproject(pt, zoom), zoom, {duration:.5});
 }
 function closeSheet(){

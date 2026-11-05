@@ -2,439 +2,948 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
-<meta name="theme-color" content="#0b3a5b">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0a4d7a">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Door Log</title>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Door Log">
+<title>Door Log · USA Water Co</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a4d7a'/%3E%3Cpath d='M32 12C24 24 18 31 18 39a14 14 0 0 0 28 0c0-8-6-15-14-27Z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230a4d7a'/%3E%3Cpath d='M32 12C24 24 18 31 18 39a14 14 0 0 0 28 0c0-8-6-15-14-27Z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&family=Source+Sans+3:wght@400;600&display=swap">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap">
 <style>
-/* Layout: full-screen map, slim header, floating controls, bottom sheet for each door. */
+/* Layout: full-bleed map; floating header card; bottom tab bar (Map / Days / Doors / Settings);
+   door details in a draggable bottom sheet; other tabs slide over the map. */
 :root{
-  --navy:#0b3a5b; --ink:#13222e; --muted:#5d6f7c; --line:#d6e0e6; --panel:#ffffff; --bg:#eef3f6;
-  --accent:#0f8fb8;
-  --s-nothome:#8a96a0; --s-no:#d0453b; --s-int:#e6a417; --s-booked:#1f9d55;
+  --brand:#0a4d7a; --brand-2:#1593c9; --brand-ink:#ffffff;
+  --ink:#122230; --muted:#5f7282; --faint:#8d9daa; --line:#dfe7ed;
+  --surface:#ffffff; --surface-2:#f3f7fa; --bg:#eaf1f6;
+  --s-nothome:#8795a1; --s-no:#e0533d; --s-int:#efa316; --s-booked:#18a058;
+  --s-int-ink:#a86f00;
+  --shadow:0 10px 30px rgba(10,40,64,.16),0 2px 6px rgba(10,40,64,.08);
   --display:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
-  --body:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;
-  --safe-b:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px);
+  --body:"Source Sans 3",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px);
+  --sl:env(safe-area-inset-left,0px); --sr:env(safe-area-inset-right,0px);
+  --tabs:64px;
+  --ease:cubic-bezier(.2,.8,.2,1);
 }
 @media (prefers-color-scheme: dark){:root{
-  --ink:#e6eef3; --muted:#9fb1bd; --line:#2a3b47; --panel:#15222c; --bg:#0d171e; --accent:#3ab6dc; color-scheme:dark;
+  --brand:#0c5a8e; --brand-2:#43b6e6;
+  --ink:#e8eff4; --muted:#9fb2c1; --faint:#71879a; --line:#243543;
+  --surface:#13202b; --surface-2:#1a2a37; --bg:#0b151d; --s-int-ink:#f3b63e;
+  --shadow:0 10px 30px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.3);
+  color-scheme:dark;
 }}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-body{font:16px/1.4 var(--body);color:var(--ink);background:var(--bg);overflow:hidden;-webkit-tap-highlight-color:transparent}
+body{font:16px/1.4 var(--body);color:var(--ink);background:var(--bg);overflow:hidden;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
 button,input,select,textarea{font:inherit;color:inherit}
-button{cursor:pointer}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button{cursor:pointer;-webkit-user-select:none;user-select:none}
+:focus-visible{outline:3px solid var(--brand-2);outline-offset:2px}
 [hidden]{display:none!important}
+.num{font-family:var(--display);font-variant-numeric:tabular-nums}
+.press{transition:transform .12s var(--ease),background-color .2s,border-color .2s,box-shadow .2s}
+.press:active{transform:scale(.96)}
 
-header{position:fixed;top:0;left:0;right:0;z-index:1000;background:var(--navy);color:#fff;
-  padding:calc(var(--safe-t) + 8px) max(14px,env(safe-area-inset-right)) 8px max(14px,env(safe-area-inset-left));
-  display:flex;align-items:center;gap:10px}
-header h1{font:700 20px/1 var(--display);letter-spacing:.02em;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-header h1 small{font:600 12px var(--body);opacity:.7;letter-spacing:.06em;text-transform:uppercase;margin-left:6px}
-.tally{display:flex;gap:6px}
-.tally span{display:flex;align-items:center;gap:4px;font:700 15px var(--display);font-variant-numeric:tabular-nums;background:rgba(255,255,255,.12);padding:3px 8px;border-radius:999px}
-.tally i{width:9px;height:9px;border-radius:50%;display:block}
+/* ---------- map ---------- */
+#map{position:fixed;inset:0;z-index:1;background:var(--bg)}
+.leaflet-container{font-family:var(--body)}
+.leaflet-control-attribution{font-size:10px;background:rgba(255,255,255,.7)!important;margin-bottom:calc(var(--tabs) + var(--sb))!important}
+.pin{transition:transform .25s var(--ease);transform-origin:50% 100%}
+.pin-drop{animation:drop .38s var(--ease)}
+@keyframes drop{from{transform:translateY(-18px) scale(.6);opacity:0}to{transform:none;opacity:1}}
+.pin-new{animation:bob 1.2s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-5px)}}
+.pin.dim{opacity:.18}
+.pin{position:relative}
+.pin-g{position:absolute;left:8px;top:7px;width:18px;height:18px;color:#fff;display:block;z-index:1}
+.pin-g svg{width:18px;height:18px;display:block}
+.me{width:20px;height:20px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);position:relative}
+.me::after{content:"";position:absolute;inset:-12px;border-radius:50%;background:rgba(26,115,232,.22);animation:pulse 2s ease-out infinite}
+@keyframes pulse{from{transform:scale(.4);opacity:1}to{transform:scale(1.4);opacity:0}}
 
-#map{position:fixed;inset:0;z-index:1}
-.leaflet-top{top:calc(var(--safe-t) + 52px)}
+/* ---------- top card ---------- */
+.top{position:fixed;z-index:900;top:calc(var(--st) + 10px);left:calc(var(--sl) + 12px);right:calc(var(--sr) + 12px);
+  display:flex;align-items:center;gap:12px;background:var(--surface);border-radius:18px;box-shadow:var(--shadow);padding:10px 12px 10px 10px;max-width:520px;margin:0 auto}
+.logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(160deg,var(--brand-2),var(--brand));display:grid;place-items:center;flex:none}
+.logo svg{width:20px;height:20px}
+.brand{flex:1;min-width:0;line-height:1.1}
+.brand b{display:block;font:700 19px var(--display);letter-spacing:.01em}
+.brand small{display:block;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.today{display:flex;gap:6px}
+.today div{text-align:center;min-width:44px;padding:4px 6px;border-radius:10px;background:var(--surface-2)}
+.today b{display:block;font:700 20px/1 var(--display);font-variant-numeric:tabular-nums}
+.today span{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.today .bk b{color:var(--s-booked)}
 
-.fabs{position:fixed;right:max(12px,env(safe-area-inset-right));bottom:calc(var(--safe-b) + 18px);z-index:1000;display:flex;flex-direction:column;gap:10px}
-.fab{width:52px;height:52px;border-radius:50%;border:0;background:var(--panel);color:var(--ink);box-shadow:0 3px 12px rgba(0,0,0,.25);display:grid;place-items:center}
-.fab svg{width:24px;height:24px}
-.fab.primary{background:var(--navy);color:#fff}
-.fab.on{background:var(--accent);color:#fff}
+.dayfilter{position:fixed;z-index:899;top:calc(var(--st) + 94px);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;
+  background:var(--brand);color:#fff;border-radius:999px;padding:6px 6px 6px 14px;box-shadow:var(--shadow);font-weight:600;font-size:14px;white-space:nowrap}
+.dayfilter button{border:0;background:rgba(255,255,255,.18);color:#fff;border-radius:999px;padding:5px 11px;font-weight:700;font-size:13px}
 
-.hint{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--safe-b) + 24px);z-index:999;background:rgba(11,58,91,.92);color:#fff;
-  padding:9px 14px;border-radius:999px;font-size:14px;white-space:nowrap;pointer-events:none;max-width:calc(100% - 150px);overflow:hidden;text-overflow:ellipsis}
-.toast{position:fixed;left:50%;top:calc(var(--safe-t) + 64px);transform:translateX(-50%);z-index:3000;background:var(--ink);color:var(--panel);padding:10px 16px;border-radius:10px;font-size:15px;max-width:90vw;box-shadow:0 4px 16px rgba(0,0,0,.3)}
+/* ---------- map controls ---------- */
+.ctrls{position:fixed;z-index:800;right:calc(var(--sr) + 12px);bottom:calc(var(--tabs) + var(--sb) + 16px);display:flex;flex-direction:column;gap:10px}
+.ctrl{width:50px;height:50px;border-radius:16px;border:0;background:var(--surface);color:var(--ink);box-shadow:var(--shadow);display:grid;place-items:center}
+.ctrl svg{width:23px;height:23px}
+.ctrl.on{color:var(--brand-2)}
+.zoom{display:flex;flex-direction:column;border-radius:16px;overflow:hidden;box-shadow:var(--shadow)}
+.zoom .ctrl{box-shadow:none;border-radius:0;height:46px}
+.zoom .ctrl+.ctrl{border-top:1px solid var(--line)}
+.hint{position:fixed;z-index:790;left:calc(var(--sl) + 12px);bottom:calc(var(--tabs) + var(--sb) + 18px);max-width:calc(100% - 100px);
+  background:var(--surface);box-shadow:var(--shadow);border-radius:14px;padding:10px 14px;font-size:14px;display:flex;gap:10px;align-items:center;
+  transition:opacity .3s,transform .3s var(--ease)}
+.hint.gone{opacity:0;transform:translateY(10px);pointer-events:none}
+.hint i{width:30px;height:30px;border-radius:50%;background:var(--surface-2);display:grid;place-items:center;flex:none}
+.hint i svg{width:16px;height:16px;color:var(--brand-2)}
 
-/* Bottom sheet */
-.scrim{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:1500}
-.sheet{position:fixed;left:0;right:0;bottom:0;z-index:2000;background:var(--panel);border-radius:18px 18px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.25);
-  max-height:88%;overflow:auto;padding:8px max(16px,env(safe-area-inset-right)) calc(var(--safe-b) + 18px) max(16px,env(safe-area-inset-left));
-  max-width:560px;margin:0 auto}
-.grab{width:42px;height:5px;border-radius:3px;background:var(--line);margin:2px auto 10px}
-.sheet h2{font:700 22px/1.15 var(--display);margin:0;text-wrap:balance}
-.sub{color:var(--muted);font-size:14px;margin-top:2px}
-.row{display:flex;gap:8px;align-items:center}
-.lbl{display:block;font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
-.status{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-.status button{border:2px solid var(--line);background:transparent;border-radius:12px;padding:12px 8px;font:700 17px var(--display);display:flex;align-items:center;justify-content:center;gap:8px;min-height:54px}
-.status button i{width:12px;height:12px;border-radius:50%}
-.status button[aria-pressed="true"]{border-color:currentColor;background:color-mix(in srgb,currentColor 12%,transparent)}
-.st-nothome{color:var(--s-nothome)} .st-no{color:var(--s-no)} .st-int{color:#b47d00} .st-booked{color:var(--s-booked)}
-@media (prefers-color-scheme: dark){.st-int{color:var(--s-int)}}
-.status button span{color:var(--ink)}
-input,select,textarea{width:100%;border:1.5px solid var(--line);background:var(--bg);border-radius:10px;padding:11px 12px;font-size:16px}
-textarea{min-height:70px;resize:vertical}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.grid3{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.grid3>:first-child{grid-column:1/-1}
-.grid2>*,.grid3>*{min-width:0}
-input,select{min-width:0}
-.booking{border:2px solid var(--s-booked);border-radius:14px;padding:4px 12px 12px;margin-top:14px}
-.btn{border:0;border-radius:12px;padding:13px 16px;font:700 17px var(--display);letter-spacing:.02em;min-height:50px}
-.btn.main{background:var(--navy);color:#fff;flex:1}
-.btn.ghost{background:transparent;border:1.5px solid var(--line);color:var(--ink)}
+/* ---------- tab bar ---------- */
+.tabs{position:fixed;z-index:1200;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);
+  padding:0 var(--sr) var(--sb) var(--sl);display:grid;grid-template-columns:repeat(4,1fr);height:calc(var(--tabs) + var(--sb))}
+.tabs button{border:0;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--faint);font-size:11.5px;font-weight:700;letter-spacing:.02em;position:relative}
+.tabs svg{width:24px;height:24px}
+.tabs button[aria-selected="true"]{color:var(--brand-2)}
+.tabs button[aria-selected="true"]::before{content:"";position:absolute;top:0;width:28px;height:3px;border-radius:0 0 3px 3px;background:var(--brand-2)}
+
+/* ---------- views ---------- */
+.view{position:fixed;z-index:1100;left:0;right:0;top:0;bottom:calc(var(--tabs) + var(--sb));background:var(--bg);overflow:auto;-webkit-overflow-scrolling:touch;
+  transform:translateY(16px);opacity:0;pointer-events:none;transition:transform .28s var(--ease),opacity .2s}
+.view.open{transform:none;opacity:1;pointer-events:auto}
+.view-in{max-width:620px;margin:0 auto;padding:calc(var(--st) + 18px) max(16px,var(--sr)) 28px max(16px,var(--sl))}
+.view h1{font:700 30px/1.05 var(--display);margin:0;letter-spacing:.005em}
+.view .lede{color:var(--muted);margin:4px 0 0}
+.sec{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:24px 0 10px}
+.card{background:var(--surface);border-radius:18px;box-shadow:0 1px 2px rgba(10,40,64,.06);border:1px solid var(--line)}
+
+/* stats */
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}
+.kpi{padding:12px 12px 10px}
+.kpi b{display:block;font:700 30px/1 var(--display);font-variant-numeric:tabular-nums}
+.kpi span{font-size:12.5px;color:var(--muted);font-weight:600}
+.chart{padding:14px 12px 10px}
+.chart-head{display:flex;justify-content:space-between;align-items:baseline;margin:0 2px 10px}
+.chart-head b{font-weight:700}
+.chart-head span{font-size:13px;color:var(--muted)}
+.bars{display:grid;grid-template-columns:repeat(14,1fr);gap:5px;align-items:end;height:120px;position:relative}
+.bars::before{content:"";position:absolute;left:0;right:0;bottom:0;border-top:1px solid var(--line)}
+.bar{display:flex;flex-direction:column-reverse;border-radius:5px 5px 2px 2px;overflow:hidden;min-height:3px;background:var(--surface-2);border:0;padding:0;transition:height .5s var(--ease)}
+.bar i{display:block;width:100%}
+.bar.sel{outline:2px solid var(--brand-2);outline-offset:2px}
+.bar-labels{display:grid;grid-template-columns:repeat(14,1fr);gap:5px;margin-top:6px;text-align:center;font-size:10.5px;color:var(--faint);font-weight:600;font-variant-numeric:tabular-nums}
+.bar-labels .wk{color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin:10px 2px 0;font-size:12.5px;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:5px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+
+.day{padding:14px 14px 12px;margin-bottom:10px}
+.day-top{display:flex;align-items:flex-start;gap:12px}
+.day-date{flex:1;min-width:0}
+.day-date b{display:block;font:700 21px/1.1 var(--display)}
+.day-date span{font-size:13.5px;color:var(--muted)}
+.day-count{text-align:right}
+.day-count b{display:block;font:700 30px/1 var(--display);font-variant-numeric:tabular-nums}
+.day-count span{font-size:12px;color:var(--muted);font-weight:600}
+.stack{display:flex;height:8px;border-radius:5px;overflow:hidden;margin:12px 0 10px;background:var(--surface-2);gap:2px}
+.stack i{display:block;height:100%}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border-radius:999px;padding:4px 10px 4px 8px;font-size:13.5px;font-weight:600}
+.chip.zero{opacity:.5}
+.chip b{font-family:var(--display);font-size:15px;font-variant-numeric:tabular-nums}
+.day-actions{display:flex;gap:8px;margin-top:12px}
+.lnk{border:0;background:var(--surface-2);color:var(--brand-2);font-weight:700;font-size:14px;border-radius:10px;padding:8px 12px}
+.day-doors{margin-top:10px;border-top:1px solid var(--line)}
+.dd{display:flex;gap:10px;align-items:center;padding:9px 2px;border-bottom:1px solid var(--line);font-size:14.5px;width:100%;background:none;border-left:0;border-right:0;border-top:0;text-align:left}
+.dd:last-child{border-bottom:0}
+.dd time{color:var(--muted);font-variant-numeric:tabular-nums;width:62px;flex:none;font-size:13.5px}
+.dd span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dd em{font-style:normal;font-size:12.5px;color:var(--muted);flex:none}
+.empty{padding:34px 18px;text-align:center;color:var(--muted)}
+.empty b{display:block;color:var(--ink);font:700 19px var(--display);margin-bottom:4px}
+
+/* doors list */
+.search{position:relative;margin-top:14px}
+.search input{padding-left:40px}
+.search svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--faint)}
+.filters{display:flex;gap:6px;overflow-x:auto;margin:10px -16px 0;padding:2px 16px 4px;scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.filters button{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 13px;font-weight:600;font-size:14px;display:flex;gap:6px;align-items:center}
+.filters button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.list{margin-top:12px;overflow:hidden}
+.row{display:flex;gap:12px;align-items:center;padding:12px 14px;border:0;border-bottom:1px solid var(--line);background:none;width:100%;text-align:left}
+.row:last-child{border-bottom:0}
+.row .ic{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;flex:none;color:#fff}
+.row .ic svg{width:17px;height:17px}
+.row div{flex:1;min-width:0}
+.row b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row small{display:block;color:var(--muted);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .chev{width:18px;height:18px;color:var(--faint);flex:none}
+
+/* forms */
+.field{display:block;margin-top:14px}
+.field>span{display:block;font-size:12.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+input,select,textarea{width:100%;min-width:0;border:1.5px solid var(--line);background:var(--surface-2);border-radius:12px;padding:12px 13px;font-size:16px;transition:border-color .2s,background .2s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand-2);background:var(--surface)}
+textarea{min-height:76px;resize:none}
+.help{font-size:13px;color:var(--muted);margin-top:6px}
+.settings{padding:4px 16px 18px}
+.btn{border:0;border-radius:14px;padding:14px 18px;font:700 17px var(--display);letter-spacing:.02em;min-height:52px;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;width:100%}
+.btn svg{width:20px;height:20px}
+.btn.primary{background:var(--brand);color:#fff}
+.btn.go{background:var(--s-booked);color:#fff}
+.btn.soft{background:var(--surface-2);color:var(--ink)}
 .btn.danger{background:transparent;color:var(--s-no);border:1.5px solid var(--line)}
-.btn.cal{background:var(--s-booked);color:#fff;flex:1;text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center}
-.actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
-.calbox{margin-top:12px;display:flex;flex-direction:column;gap:8px}
-.meta{font-size:13px;color:var(--muted);margin-top:12px}
+.stack-btns{display:flex;flex-direction:column;gap:8px;margin-top:16px}
 
-/* List panel */
-.panel{position:fixed;inset:0;z-index:2500;background:var(--bg);display:flex;flex-direction:column}
-.panel header{position:static}
-.panel .body{flex:1;overflow:auto;padding:12px max(16px,env(safe-area-inset-right)) calc(var(--safe-b) + 24px) max(16px,env(safe-area-inset-left))}
-.filters{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
-.filters button{border:1.5px solid var(--line);background:var(--panel);border-radius:999px;padding:6px 12px;white-space:nowrap;font-weight:600;font-size:14px}
-.filters button[aria-pressed="true"]{background:var(--navy);color:#fff;border-color:var(--navy)}
-.list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-.item{display:flex;gap:10px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;text-align:left;width:100%}
-.item i{width:12px;height:12px;border-radius:50%;margin-top:5px;flex:none}
-.item b{display:block;font-weight:600}
-.item small{color:var(--muted);display:block}
-.empty{color:var(--muted);text-align:center;padding:30px 10px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px 14px 14px;margin-top:18px}
-.card h3{font:700 18px var(--display);margin:12px 0 0}
-.close{background:transparent;border:0;color:#fff;font:700 16px var(--display);padding:6px 4px}
+/* ---------- sheet ---------- */
+.sheet{position:fixed;z-index:1300;left:0;right:0;bottom:0;max-width:560px;margin:0 auto;background:var(--surface);border-radius:24px 24px 0 0;
+  box-shadow:0 -10px 40px rgba(10,40,64,.22);max-height:calc(100% - var(--st) - 24px);display:flex;flex-direction:column;
+  transform:translateY(105%);transition:transform .32s var(--ease);will-change:transform}
+.sheet.open{transform:translateY(0)}
+.sheet.dragging{transition:none}
+.sheet-head{padding:8px 18px 4px;touch-action:none;cursor:grab}
+.grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 12px}
+.addr{display:flex;align-items:flex-start;gap:10px}
+.addr div{flex:1;min-width:0}
+.addr h2{font:700 24px/1.1 var(--display);margin:0;text-wrap:balance}
+.addr p{margin:3px 0 0;color:var(--muted);font-size:14px}
+.shimmer{display:inline-block;height:22px;width:62%;border-radius:6px;background:linear-gradient(90deg,var(--surface-2),var(--line),var(--surface-2));background-size:200% 100%;animation:sh 1.1s linear infinite;vertical-align:middle}
+@keyframes sh{to{background-position:-200% 0}}
+.x{width:36px;height:36px;border-radius:50%;border:0;background:var(--surface-2);display:grid;place-items:center;flex:none;color:var(--muted)}
+.x svg{width:18px;height:18px}
+.sheet-body{overflow:auto;padding:6px 18px calc(var(--sb) + 18px);-webkit-overflow-scrolling:touch}
+.status{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.st{--c:var(--s-nothome);border:2px solid var(--line);background:var(--surface);border-radius:16px;padding:12px;display:flex;align-items:center;gap:10px;text-align:left;min-height:64px}
+.st .ic{width:36px;height:36px;border-radius:50%;background:color-mix(in srgb,var(--c) 16%,transparent);color:var(--c);display:grid;place-items:center;flex:none;transition:background .2s,color .2s}
+.st .ic svg{width:19px;height:19px}
+.st b{display:block;font:700 18px/1.05 var(--display)}
+.st small{display:block;font-size:12.5px;color:var(--muted);margin-top:1px}
+.st[data-s="no"]{--c:var(--s-no)} .st[data-s="int"]{--c:var(--s-int)} .st[data-s="booked"]{--c:var(--s-booked)}
+.st[aria-pressed="true"]{border-color:var(--c);background:color-mix(in srgb,var(--c) 9%,var(--surface))}
+.st[aria-pressed="true"] .ic{background:var(--c);color:#fff}
+.more{border:0;background:none;color:var(--brand-2);font-weight:700;font-size:14.5px;padding:12px 2px 2px;display:flex;align-items:center;gap:6px}
+.more svg{width:16px;height:16px}
+.details{animation:fadeup .28s var(--ease)}
+@keyframes fadeup{from{opacity:0;transform:translateY(8px)}}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid2>*{min-width:0}
 
-.me-dot{width:18px;height:18px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 6px rgba(26,115,232,.25)}
-.leaflet-container{font-family:var(--body);background:var(--bg)}
+.appt{margin-top:16px;border-radius:18px;background:color-mix(in srgb,var(--s-booked) 7%,var(--surface));border:1.5px solid color-mix(in srgb,var(--s-booked) 35%,transparent);padding:14px 0 14px}
+.appt-h{display:flex;justify-content:space-between;align-items:baseline;padding:0 14px}
+.appt-h b{font:700 18px var(--display)}
+.appt-h span{font-size:13.5px;color:var(--muted)}
+.days{display:flex;gap:8px;overflow-x:auto;padding:12px 14px 4px;scroll-snap-type:x proximity;scrollbar-width:none}
+.days::-webkit-scrollbar{display:none}
+.dchip{flex:none;width:58px;border:1.5px solid var(--line);background:var(--surface);border-radius:14px;padding:7px 0 8px;text-align:center;scroll-snap-align:start}
+.dchip small{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.dchip b{display:block;font:700 22px/1.1 var(--display);font-variant-numeric:tabular-nums}
+.dchip[aria-pressed="true"]{background:var(--s-booked);border-color:var(--s-booked);color:#fff}
+.dchip[aria-pressed="true"] small{color:rgba(255,255,255,.85)}
+.times{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;padding:10px 14px 0}
+.tchip{border:1.5px solid var(--line);background:var(--surface);border-radius:11px;padding:9px 0;font-weight:700;font-size:14.5px;font-variant-numeric:tabular-nums}
+.tchip[aria-pressed="true"]{background:var(--s-booked);border-color:var(--s-booked);color:#fff}
+.appt-foot{display:flex;gap:10px;align-items:center;padding:12px 14px 0}
+.appt-foot label{font-size:13.5px;color:var(--muted);font-weight:600;white-space:nowrap}
+.appt-foot select{padding:9px 10px;width:auto;flex:1}
+.save{position:sticky;bottom:0;padding-top:14px;background:linear-gradient(to bottom,transparent,var(--surface) 30%)}
+.meta{font-size:13px;color:var(--faint);margin-top:12px;text-align:center}
+
+.done{text-align:center;padding:6px 0 4px;animation:fadeup .3s var(--ease)}
+.check{width:64px;height:64px;border-radius:50%;background:var(--s-booked);color:#fff;display:grid;place-items:center;margin:4px auto 10px;animation:popin .45s var(--ease)}
+.check svg{width:32px;height:32px;stroke-dasharray:30;stroke-dashoffset:30;animation:drawck .4s .15s ease-out forwards}
+@keyframes popin{from{transform:scale(.3);opacity:0}}
+@keyframes drawck{to{stroke-dashoffset:0}}
+.done h3{font:700 24px var(--display);margin:0}
+.done p{color:var(--muted);margin:4px 0 0}
+
+/* ---------- toast ---------- */
+.toast{position:fixed;z-index:2000;left:calc(var(--sl) + 12px);bottom:calc(var(--tabs) + var(--sb) + 16px);transform:translateY(30px);opacity:0;pointer-events:none;
+  background:#13222e;color:#fff;border-radius:14px;padding:11px 8px 11px 16px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow);
+  transition:transform .3s var(--ease),opacity .2s;max-width:calc(100% - 90px - var(--sl) - var(--sr));font-weight:600;font-size:15px}
+.toast.show{transform:none;opacity:1;pointer-events:auto}
+.toast .dot{width:10px;height:10px}
+.toast span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toast button{border:0;background:rgba(255,255,255,.14);color:#8fd3ff;font-weight:700;border-radius:9px;padding:6px 12px;flex:none}
+.toast button[hidden]+span{padding-right:8px}
+
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+@media (min-width:700px){.sheet{bottom:calc(var(--tabs) + 12px);border-radius:24px}}
 </style>
 </head>
 <body>
 
-<header>
-  <h1>Door Log<small id="repLabel"></small></h1>
-  <div class="tally" aria-label="Today's tally">
-    <span title="Booked"><i style="background:var(--s-booked)"></i><b id="cBooked">0</b></span>
-    <span title="Interested"><i style="background:var(--s-int)"></i><b id="cInt">0</b></span>
-    <span title="Not interested"><i style="background:var(--s-no)"></i><b id="cNo">0</b></span>
+<div id="map" role="application" aria-label="Map. Tap a house to log a door."></div>
+
+<div class="top">
+  <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2.5C9 7 6 10.4 6 14a6 6 0 0 0 12 0c0-3.6-3-7-6-11.5Z"/></svg></div>
+  <div class="brand"><b>Door Log</b><small id="whoLine">USA Water Co</small></div>
+  <div class="today" aria-label="Today">
+    <div><b id="tDoors">0</b><span>Doors</span></div>
+    <div class="bk"><b id="tBooked">0</b><span>Booked</span></div>
   </div>
-</header>
+</div>
+<div class="dayfilter" id="dayFilter" hidden><span id="dayFilterTxt"></span><button id="dayFilterOff" type="button">Show all</button></div>
 
-<div id="map" aria-label="Map"></div>
-<div class="hint" id="hint">Tap a house to log the door</div>
+<div class="hint" id="hint"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 11V5a2 2 0 1 1 4 0v6m0-2a2 2 0 1 1 4 0v2m0 0a2 2 0 1 1 4 0v4a6 6 0 0 1-6 6h-2a6 6 0 0 1-5-2.7L5 15a2 2 0 0 1 3-2.6L9 13"/></svg></i><span>Tap a house to log the door</span></div>
 
-<div class="fabs">
-  <button class="fab" id="layerBtn" aria-label="Switch satellite / street map" title="Satellite view">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 13 10 5 10-5"/></svg>
+<div class="ctrls">
+  <button class="ctrl press" id="layerBtn" aria-label="Satellite view" title="Satellite view">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg>
   </button>
-  <button class="fab" id="listBtn" aria-label="Doors list and settings">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
-  </button>
-  <button class="fab primary" id="locBtn" aria-label="Center on my location">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+  <div class="zoom">
+    <button class="ctrl" id="zin" aria-label="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button class="ctrl" id="zout" aria-label="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+  </div>
+  <button class="ctrl press" id="locBtn" aria-label="Go to my location">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.4 2.6a1 1 0 0 0-1.1-.2l-17 7a1 1 0 0 0 .1 1.9l7.1 2.1 2.1 7.1a1 1 0 0 0 1.9.1l7-17a1 1 0 0 0-.1-1Z"/></svg>
   </button>
 </div>
 
-<div class="scrim" id="scrim" hidden></div>
-<form class="sheet" id="sheet" hidden autocomplete="off">
-  <div class="grab"></div>
-  <h2 id="fAddrTitle">New door</h2>
-  <div class="sub" id="fCoords"></div>
-
-  <label class="lbl" for="fAddr">Address</label>
-  <input id="fAddr" placeholder="Looking up address…">
-
-  <span class="lbl">How did it go?</span>
-  <div class="status" id="statusBtns">
-    <button type="button" class="st-nothome" data-s="nothome" aria-pressed="false"><i style="background:var(--s-nothome)"></i><span>Not home</span></button>
-    <button type="button" class="st-no" data-s="no" aria-pressed="false"><i style="background:var(--s-no)"></i><span>Not interested</span></button>
-    <button type="button" class="st-int" data-s="int" aria-pressed="false"><i style="background:var(--s-int)"></i><span>Interested</span></button>
-    <button type="button" class="st-booked" data-s="booked" aria-pressed="false"><i style="background:var(--s-booked)"></i><span>Booked</span></button>
-  </div>
-
-  <div class="booking" id="booking" hidden>
-    <span class="lbl" style="color:var(--s-booked)">Appointment</span>
-    <div class="grid3">
-      <div><label class="lbl" for="fDate" style="margin-top:0">Day</label><input type="date" id="fDate"></div>
-      <div><label class="lbl" for="fTime">Time</label><input type="time" id="fTime" step="900"></div>
-      <div><label class="lbl" for="fDur">Length</label>
-        <select id="fDur"><option value="30">30 min</option><option value="60">1 hr</option><option value="90">1.5 hr</option><option value="120">2 hr</option><option value="180">3 hr</option></select></div>
+<!-- Days -->
+<section class="view" id="v-days" aria-label="Days">
+  <div class="view-in">
+    <h1>Daily activity</h1>
+    <p class="lede">Every door logged, grouped by the day it was knocked.</p>
+    <div class="sec">This week</div>
+    <div class="kpis" style="margin-top:0">
+      <div class="card kpi"><b id="kWeekDoors">0</b><span>Doors</span></div>
+      <div class="card kpi"><b id="kWeekBooked" style="color:var(--s-booked)">0</b><span>Booked</span></div>
+      <div class="card kpi"><b id="kRate">0%</b><span>Booking rate</span></div>
     </div>
-  </div>
-
-  <div class="grid2">
-    <div><label class="lbl" for="fName">Homeowner</label><input id="fName" placeholder="Name"></div>
-    <div><label class="lbl" for="fPhone">Phone</label><input id="fPhone" type="tel" inputmode="tel" placeholder="(555) 555-5555"></div>
-  </div>
-  <label class="lbl" for="fNotes">Notes</label>
-  <textarea id="fNotes" placeholder="Hard water, has a softener, spouse decides, come back Sat…"></textarea>
-
-  <div class="actions">
-    <button type="submit" class="btn main" id="saveBtn">Save door</button>
-    <button type="button" class="btn ghost" id="cancelBtn">Cancel</button>
-  </div>
-
-  <div class="calbox" id="calbox" hidden>
-    <span class="lbl" style="margin-bottom:0">Put it on the calendar</span>
-    <a class="btn cal" id="gcalLink" href="#" target="_blank" rel="noopener">Add to Google Calendar</a>
-    <button type="button" class="btn ghost" id="icsBtn">Download calendar file (.ics)</button>
-  </div>
-
-  <div class="actions" id="delRow" hidden><button type="button" class="btn danger" id="delBtn">Delete this door</button></div>
-  <div class="meta" id="fMeta"></div>
-</form>
-
-<section class="panel" id="panel" hidden>
-  <header><h1>Doors</h1><button class="close" id="panelClose">Back to map</button></header>
-  <div class="body">
-    <div class="filters" id="filters">
-      <button data-f="all" aria-pressed="true">All</button>
-      <button data-f="booked" aria-pressed="false">Booked</button>
-      <button data-f="int" aria-pressed="false">Interested</button>
-      <button data-f="no" aria-pressed="false">Not interested</button>
-      <button data-f="nothome" aria-pressed="false">Not home</button>
+    <div class="card chart" style="margin-top:10px">
+      <div class="chart-head"><b>Last 14 days</b><span id="chartAvg"></span></div>
+      <div class="bars" id="bars"></div>
+      <div class="bar-labels" id="barLabels"></div>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--s-booked)"></i>Booked</span>
+        <span><i class="dot" style="background:var(--s-int)"></i>Interested</span>
+        <span><i class="dot" style="background:var(--s-no)"></i>Not interested</span>
+        <span><i class="dot" style="background:var(--s-nothome)"></i>Not home</span>
+      </div>
     </div>
-    <div class="list" id="list"></div>
-
-    <div class="card">
-      <h3>Settings</h3>
-      <label class="lbl" for="sRep">Rep name</label>
-      <input id="sRep" placeholder="e.g. Mike">
-      <label class="lbl" for="sOwner">Owner's email (invited to every booking)</label>
-      <input id="sOwner" type="email" placeholder="owner@gmail.com">
-      <label class="lbl" for="sDur">Default appointment length</label>
-      <select id="sDur"><option value="30">30 min</option><option value="60">1 hr</option><option value="90">1.5 hr</option><option value="120">2 hr</option></select>
-      <div class="actions"><button type="button" class="btn ghost" id="csvBtn" style="flex:1">Export all doors (CSV)</button></div>
-    </div>
+    <div class="sec">Day by day</div>
+    <div id="dayList"></div>
   </div>
 </section>
 
-<div class="toast" id="toast" hidden></div>
+<!-- Doors -->
+<section class="view" id="v-doors" aria-label="Doors">
+  <div class="view-in">
+    <h1>Doors</h1>
+    <p class="lede" id="doorsLede">Everything logged on this phone.</p>
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Search address, name, phone or notes" autocomplete="off">
+    </div>
+    <div class="filters" id="filters"></div>
+    <div class="card list" id="list"></div>
+  </div>
+</section>
+
+<!-- Settings -->
+<section class="view" id="v-settings" aria-label="Settings">
+  <div class="view-in">
+    <h1>Settings</h1>
+    <p class="lede">Saved on this phone.</p>
+    <div class="sec">You</div>
+    <div class="card settings">
+      <label class="field"><span>Your name</span><input id="sRep" placeholder="e.g. Mike Torres" autocomplete="name"></label>
+      <p class="help">Shown on every door and booking you log.</p>
+    </div>
+    <div class="sec">Bookings</div>
+    <div class="card settings">
+      <label class="field"><span>Owner's email</span><input id="sOwner" type="email" inputmode="email" placeholder="owner@gmail.com" autocomplete="off"></label>
+      <p class="help">Gets invited to every appointment added to Google Calendar.</p>
+      <label class="field"><span>Calendly link (optional)</span><input id="sCalendly" type="url" inputmode="url" placeholder="calendly.com/yourname/water-test" autocomplete="off"></label>
+      <p class="help">If set, booked doors get a button that opens Calendly with the homeowner's details filled in.</p>
+      <label class="field"><span>Default appointment length</span>
+        <select id="sDur"><option value="30">30 minutes</option><option value="60">1 hour</option><option value="90">1.5 hours</option><option value="120">2 hours</option></select></label>
+    </div>
+    <div class="sec">Data</div>
+    <div class="card settings">
+      <div class="stack-btns">
+        <button class="btn soft press" id="csvBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export all doors (spreadsheet)</button>
+        <button class="btn danger press" id="wipeBtn" type="button">Erase all doors on this phone</button>
+      </div>
+    </div>
+    <p class="meta">Door Log · USA Water Co</p>
+  </div>
+</section>
+
+<!-- Door sheet -->
+<form class="sheet" id="sheet" aria-label="Door details" autocomplete="off" novalidate>
+  <div class="sheet-head" id="sheetHead">
+    <div class="grab"></div>
+    <div class="addr">
+      <div><h2 id="sTitle"><span class="shimmer"></span></h2><p id="sSub">Finding address…</p></div>
+      <button type="button" class="x press" id="closeBtn" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+  </div>
+  <div class="sheet-body" id="sheetBody">
+    <div id="formPart">
+      <div class="status" id="statusBtns"></div>
+      <button type="button" class="more" id="moreBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add name, phone or notes</button>
+
+      <div id="apptBox" class="appt" hidden>
+        <div class="appt-h"><b>Appointment</b><span id="apptSummary"></span></div>
+        <div class="days" id="dayChips"></div>
+        <div class="times" id="timeChips"></div>
+        <div class="appt-foot"><label for="fDur">Length</label>
+          <select id="fDur"><option value="30">30 min</option><option value="60">1 hour</option><option value="90">1.5 hours</option><option value="120">2 hours</option><option value="180">3 hours</option></select></div>
+      </div>
+
+      <div id="details" class="details" hidden>
+        <div class="grid2">
+          <label class="field"><span>Homeowner</span><input id="fName" placeholder="Name" autocomplete="off"></label>
+          <label class="field"><span>Phone</span><input id="fPhone" type="tel" inputmode="tel" placeholder="(555) 555-5555" autocomplete="off"></label>
+        </div>
+        <label class="field"><span>Notes</span><textarea id="fNotes" placeholder="Hard water, has a softener, spouse decides, come back Saturday…"></textarea></label>
+        <label class="field"><span>Address</span><input id="fAddr" placeholder="Street address" autocomplete="off"></label>
+      </div>
+
+      <div class="save" id="saveRow" hidden><button type="submit" class="btn primary press" id="saveBtn">Save</button></div>
+      <div class="stack-btns" id="delRow" hidden><button type="button" class="btn danger press" id="delBtn">Delete this door</button></div>
+      <p class="meta" id="fMeta"></p>
+    </div>
+
+    <div id="donePart" hidden>
+      <div class="done">
+        <div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div>
+        <h3>Appointment booked</h3>
+        <p id="doneWhen"></p>
+      </div>
+      <div class="stack-btns">
+        <a class="btn go press" id="calendlyLink" href="#" target="_blank" rel="noopener" hidden>Book it in Calendly</a>
+        <a class="btn go press" id="gcalLink" href="#" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Add to Google Calendar</a>
+        <button type="button" class="btn soft press" id="icsBtn">Other calendar (iPhone, Outlook)</button>
+        <button type="button" class="btn soft press" id="doneBtn">Done</button>
+      </div>
+    </div>
+  </div>
+</form>
+
+<div class="toast" id="toast" role="status" aria-live="polite"><i class="dot" id="toastDot"></i><span id="toastTxt"></span><button type="button" id="toastUndo" hidden>Undo</button></div>
+
+<nav class="tabs" role="tablist" aria-label="Sections">
+  <button role="tab" data-v="map" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg>Map</button>
+  <button role="tab" data-v="days" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Days</button>
+  <button role="tab" data-v="doors" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>Doors</button>
+  <button role="tab" data-v="settings" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>Settings</button>
+</nav>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 (() => {
-const STATUS = {
-  nothome:{label:"Not home", color:"#8a96a0"},
-  no:{label:"Not interested", color:"#d0453b"},
-  int:{label:"Interested", color:"#e6a417"},
-  booked:{label:"Booked", color:"#1f9d55"},
+"use strict";
+/* ================= data ================= */
+const ICON = {
+  nothome:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 15h4"/></svg>',
+  no:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  int:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2.8 2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8Z"/></svg>',
+  booked:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
 };
+const STATUS = {
+  nothome:{label:"Not home", hint:"Try again later", color:"#8795a1"},
+  no:{label:"Not interested", hint:"Not a fit", color:"#e0533d"},
+  int:{label:"Interested", hint:"Follow up", color:"#efa316"},
+  booked:{label:"Booked", hint:"Set appointment", color:"#18a058"},
+};
+const ORDER = ["booked","int","no","nothome"];
 const $ = id => document.getElementById(id);
 const store = {
   get(k, d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
   set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
 let doors = store.get("doorlog.doors", []);
-let settings = Object.assign({rep:"", owner:"", dur:"90"}, store.get("doorlog.settings", {}));
-const save = () => store.set("doorlog.doors", doors);
+// migrate: every door keeps a history of status changes so the Days page can count activity per day
+doors.forEach(d => { if (!Array.isArray(d.history)) d.history = d.status ? [{s:d.status, at:d.updatedAt || d.createdAt}] : []; });
+let settings = Object.assign({rep:"", owner:"", calendly:"", dur:"90"}, store.get("doorlog.settings", {}));
+let dayFilter = null, openView = "map";
+const saveDoors = () => store.set("doorlog.doors", doors);
+const vibrate = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
 
-/* ---------- map ---------- */
-const map = L.map("map", {zoomControl:false, attributionControl:true}).setView([39.5, -98.35], 4);
-L.control.zoom({position:"topleft"}).addTo(map);
-const street = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:20, maxNativeZoom:19, attribution:"© OpenStreetMap"});
-const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {maxZoom:20, maxNativeZoom:19, attribution:"Imagery © Esri"});
-const satLabels = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}", {maxZoom:20, maxNativeZoom:19});
+/* ================= dates ================= */
+const z = n => String(n).padStart(2, "0");
+const dayKey = d => { d = new Date(d); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; };
+const fromKey = k => { const [y,m,d] = k.split("-").map(Number); return new Date(y, m-1, d); };
+const utc = d => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+const fmtTime = d => new Date(d).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+const fmtAppt = a => new Date(a.start).toLocaleString([], {weekday:"long", month:"short", day:"numeric", hour:"numeric", minute:"2-digit"});
+function relDay(k){
+  const today = dayKey(new Date()), y = new Date(); y.setDate(y.getDate()-1);
+  if (k === today) return "Today"; if (k === dayKey(y)) return "Yesterday";
+  return fromKey(k).toLocaleDateString([], {weekday:"long"});
+}
+
+/* ================= map ================= */
+const map = L.map("map", {zoomControl:false, attributionControl:true, tap:true}).setView([39.5, -98.35], 4);
+const street = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:21, maxNativeZoom:19, attribution:"© OpenStreetMap"});
+const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {maxZoom:21, maxNativeZoom:19, attribution:"Imagery © Esri"});
+const satLabels = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}", {maxZoom:21, maxNativeZoom:19});
 let satOn = store.get("doorlog.sat", false);
 function applyLayer(){
   [street, sat, satLabels].forEach(l => map.removeLayer(l));
   if (satOn){ sat.addTo(map); satLabels.addTo(map); } else street.addTo(map);
   $("layerBtn").classList.toggle("on", satOn);
+  $("layerBtn").setAttribute("aria-label", satOn ? "Street map" : "Satellite view");
 }
 applyLayer();
 $("layerBtn").onclick = () => { satOn = !satOn; store.set("doorlog.sat", satOn); applyLayer(); };
+$("zin").onclick = () => map.zoomIn(); $("zout").onclick = () => map.zoomOut();
 
+function pinHtml(s, cls = ""){
+  const c = STATUS[s]?.color || "#0a4d7a";
+  return `<div class="pin ${cls}">${s ? `<span class="pin-g">${ICON[s]}</span>` : ""}<svg width="34" height="42" viewBox="0 0 34 42" style="filter:drop-shadow(0 2px 3px rgba(0,0,0,.3))">
+    <path d="M17 1.5C8.4 1.5 1.5 8.3 1.5 16.8 1.5 28.5 17 40.5 17 40.5s15.5-12 15.5-23.7C32.5 8.3 25.6 1.5 17 1.5Z" fill="${c}" stroke="#fff" stroke-width="2.5"/>
+    ${s ? "" : '<circle cx="17" cy="16.5" r="5.5" fill="#fff"/>'}</svg></div>`;
+}
+const pinIcon = (s, cls) => L.divIcon({className:"", iconSize:[34,42], iconAnchor:[17,40], html:pinHtml(s, cls)});
 const markers = new Map();
-function pinIcon(s){
-  const c = STATUS[s]?.color || "#0b3a5b";
-  return L.divIcon({className:"", iconSize:[26,34], iconAnchor:[13,32],
-    html:`<svg width="26" height="34" viewBox="0 0 26 34"><path d="M13 1C6.4 1 1 6.3 1 12.9 1 22 13 33 13 33s12-11 12-20.1C25 6.3 19.6 1 13 1Z" fill="${c}" stroke="#fff" stroke-width="2"/><circle cx="13" cy="13" r="4.5" fill="#fff"/></svg>`});
-}
-function drawDoor(d){
+function drawDoor(d, drop){
   let m = markers.get(d.id);
-  if (!m){ m = L.marker([d.lat, d.lng]).addTo(map); m.on("click", () => openSheet(d.id)); markers.set(d.id, m); }
-  m.setIcon(pinIcon(d.status));
+  if (!m){ m = L.marker([d.lat, d.lng], {keyboard:false}).addTo(map); m.on("click", () => openDoor(d.id)); markers.set(d.id, m); }
+  const dim = dayFilter && !dayFilter.ids.has(d.id);
+  m.setIcon(pinIcon(d.status, (drop ? "pin-drop " : "") + (dim ? "dim" : "")));
+  m.setZIndexOffset(d.status === "booked" ? 300 : d.status === "int" ? 200 : 0);
 }
-doors.forEach(drawDoor);
+function removeMarker(id){ const m = markers.get(id); if (m){ map.removeLayer(m); markers.delete(id); } }
+doors.forEach(d => drawDoor(d));
 
-/* ---------- location ---------- */
-let me = null, meMarker = null, centered = false;
-const meIcon = L.divIcon({className:"", html:'<div class="me-dot"></div>', iconSize:[18,18], iconAnchor:[9,9]});
+/* ================= location ================= */
+let me = null, meMarker = null, centered = false, watchId = null;
+const meIcon = L.divIcon({className:"", html:'<div class="me"></div>', iconSize:[20,20], iconAnchor:[10,10]});
 function startGeo(){
-  if (!("geolocation" in navigator)){ toast("This browser can't share location. Pan the map by hand."); return; }
-  navigator.geolocation.watchPosition(p => {
+  if (!("geolocation" in navigator)){ toast("This browser can't share location. Move the map by hand."); return; }
+  if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+  watchId = navigator.geolocation.watchPosition(p => {
     me = [p.coords.latitude, p.coords.longitude];
-    if (!meMarker) meMarker = L.marker(me, {icon:meIcon, interactive:false, zIndexOffset:1000}).addTo(map);
-    else meMarker.setLatLng(me);
-    if (!centered){ centered = true; map.setView(me, 18); }
+    if (!meMarker) meMarker = L.marker(me, {icon:meIcon, interactive:false, keyboard:false, zIndexOffset:1000}).addTo(map); else meMarker.setLatLng(me);
+    $("locBtn").classList.add("on");
+    if (!centered){ centered = true; map.flyTo(me, 18, {duration:1.2}); }
   }, err => {
-    toast(err.code === 1 ? "Location is blocked. Allow location for this site to see where you are." : "Can't find your location right now.");
+    $("locBtn").classList.remove("on");
+    toast(err.code === 1 ? "Location is off. Allow location for this site in your phone's settings." : "Can't find your location right now.");
   }, {enableHighAccuracy:true, maximumAge:10000, timeout:20000});
 }
-$("locBtn").onclick = () => { if (me) map.setView(me, Math.max(map.getZoom(), 18)); else { centered = false; startGeo(); } };
+$("locBtn").onclick = () => { if (me) map.flyTo(me, Math.max(map.getZoom(), 18), {duration:.8}); else { centered = false; startGeo(); } };
 startGeo();
+if (doors.length && !me){ const b = L.latLngBounds(doors.map(d => [d.lat, d.lng])); map.fitBounds(b.pad(.3), {maxZoom:18}); }
 
-/* ---------- tap to log ---------- */
+/* ================= sheet ================= */
+const sheet = $("sheet");
+let editing = null, prevSnapshot = null, tempMarker = null, detailsOpen = false;
+let apptDay = null, apptTime = null;
+
+$("statusBtns").innerHTML = ["nothome","no","int","booked"].map(s =>
+  `<button type="button" class="st press" data-s="${s}" aria-pressed="false"><span class="ic">${ICON[s]}</span><span><b>${STATUS[s].label}</b><small>${STATUS[s].hint}</small></span></button>`).join("");
+
+function newId(){ return "d" + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
 map.on("click", e => {
-  const d = {id:"d"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), lat:e.latlng.lat, lng:e.latlng.lng,
-    address:"", status:"", name:"", phone:"", notes:"", appt:null, rep:settings.rep, createdAt:new Date().toISOString(), updatedAt:null, _new:true};
-  openSheet(null, d);
+  if (sheet.classList.contains("open")){ closeSheet(); return; }
+  if (openView !== "map") return;
+  const d = {id:newId(), lat:e.latlng.lat, lng:e.latlng.lng, address:"", status:"", name:"", phone:"", notes:"", appt:null,
+    rep:settings.rep, createdAt:new Date().toISOString(), updatedAt:null, history:[]};
+  tempMarker = L.marker([d.lat, d.lng], {icon:pinIcon("", "pin-drop"), interactive:false, keyboard:false}).addTo(map);
+  setTimeout(() => tempMarker && tempMarker.setIcon(pinIcon("", "pin-new")), 380);
+  showSheet(d, true);
   reverseGeocode(d);
+  hideHint();
 });
+
 async function reverseGeocode(d){
   try{
     const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=${d.lat}&lon=${d.lng}`, {headers:{"Accept-Language":"en"}});
     const j = await r.json(); const a = j.address || {};
     const line1 = [a.house_number, a.road].filter(Boolean).join(" ");
     const city = a.city || a.town || a.village || a.hamlet || a.suburb || "";
-    const addr = [line1, city, a.state ? a.state + (a.postcode ? " " + a.postcode : "") : a.postcode].filter(Boolean).join(", ") || j.display_name || "";
-    if (editing && editing.id === d.id && !$("fAddr").value){ $("fAddr").value = addr; $("fAddrTitle").textContent = line1 || addr || "New door"; }
-  } catch { if (editing && editing.id === d.id) $("fAddr").placeholder = "Type the address"; }
+    const tail = [city, [a.state, a.postcode].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    const full = [line1, tail].filter(Boolean).join(", ") || j.display_name || "";
+    if (editing && editing.id === d.id && !editing.address){ editing.address = full; $("fAddr").value = full; setTitle(editing); }
+  } catch {
+    if (editing && editing.id === d.id && !editing.address){ $("sTitle").textContent = "New door"; $("sSub").textContent = "Address not found. Add it under details."; }
+  }
+}
+function setTitle(d){
+  if (d.address){ const [l1, ...rest] = d.address.split(","); $("sTitle").textContent = l1.trim(); $("sSub").textContent = rest.join(",").trim() || "Address"; }
+  else { $("sTitle").innerHTML = '<span class="shimmer"></span>'; $("sSub").textContent = "Finding address…"; }
 }
 
-/* ---------- sheet ---------- */
-let editing = null, tempMarker = null;
-function openSheet(id, fresh){
-  editing = fresh ? fresh : {...doors.find(x => x.id === id)};
-  const d = editing;
-  if (fresh){ tempMarker = L.marker([d.lat, d.lng], {icon:pinIcon(""), interactive:false}).addTo(map); }
-  $("fAddrTitle").textContent = d.address ? d.address.split(",")[0] : "New door";
-  $("fCoords").textContent = `${d.lat.toFixed(5)}, ${d.lng.toFixed(5)}`;
+function openDoor(id){
+  if (openView !== "map") switchView("map");
+  const d = doors.find(x => x.id === id); if (!d) return;
+  if (tempMarker){ map.removeLayer(tempMarker); tempMarker = null; }
+  showSheet(JSON.parse(JSON.stringify(d)), false);
+}
+function showSheet(d, isNew){
+  editing = d; editing._new = isNew;
+  setTitle(d);
   $("fAddr").value = d.address; $("fName").value = d.name; $("fPhone").value = d.phone; $("fNotes").value = d.notes;
-  const appt = d.appt ? new Date(d.appt.start) : nextSlot();
-  $("fDate").value = ymd(appt); $("fTime").value = hm(appt); $("fDur").value = String(d.appt?.dur || settings.dur);
-  setStatus(d.status);
-  $("calbox").hidden = !(d.status === "booked" && d.appt && !d._new);
-  if (!$("calbox").hidden) fillCal(d);
-  $("cancelBtn").textContent = $("calbox").hidden ? "Cancel" : "Done";
-  $("delRow").hidden = !!d._new;
-  $("fMeta").textContent = d.updatedAt ? `Last updated ${new Date(d.updatedAt).toLocaleString()}${d.rep ? " by " + d.rep : ""}` : "";
-  $("sheet").hidden = false; $("scrim").hidden = false; $("hint").hidden = true;
-  map.panTo([d.lat, d.lng]);
+  const start = d.appt ? new Date(d.appt.start) : null;
+  apptDay = start ? dayKey(start) : null; apptTime = start ? `${z(start.getHours())}:${z(start.getMinutes())}` : null;
+  $("fDur").value = String(d.appt?.dur || settings.dur);
+  detailsOpen = !isNew && !!(d.name || d.phone || d.notes || d.status === "int" || d.status === "booked");
+  $("formPart").hidden = false; $("donePart").hidden = true;
+  $("delRow").hidden = isNew;
+  $("fMeta").textContent = d.updatedAt ? `Last updated ${new Date(d.updatedAt).toLocaleString([], {weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit"})}${d.rep ? " by " + d.rep : ""}` : "";
+  renderStatus();
+  $("sheetBody").scrollTop = 0;
+  sheet.classList.add("open");
+  requestAnimationFrame(() => focusOnMap(d));
+}
+function focusOnMap(d){
+  const h = sheet.getBoundingClientRect().height, H = map.getSize().y;
+  const zoom = Math.max(map.getZoom(), 17);
+  const pt = map.project([d.lat, d.lng], zoom).add([0, Math.min(h, H*.6)/2 - 20]);
+  map.flyTo(map.unproject(pt, zoom), zoom, {duration:.5});
 }
 function closeSheet(){
-  $("sheet").hidden = true; $("scrim").hidden = true; editing = null;
+  sheet.classList.remove("open"); sheet.style.transform = "";
+  editing = null;
   if (tempMarker){ map.removeLayer(tempMarker); tempMarker = null; }
+  document.activeElement && document.activeElement.blur && document.activeElement.blur();
 }
-function setStatus(s){
-  editing.status = s;
-  document.querySelectorAll("#statusBtns button").forEach(b => b.setAttribute("aria-pressed", b.dataset.s === s));
-  $("booking").hidden = s !== "booked";
-  $("saveBtn").textContent = s === "booked" ? "Save & book" : "Save door";
-}
-$("statusBtns").onclick = e => { const b = e.target.closest("button"); if (b) setStatus(b.dataset.s); };
-$("cancelBtn").onclick = closeSheet; $("scrim").onclick = closeSheet;
+$("closeBtn").onclick = closeSheet; $("doneBtn").onclick = closeSheet;
 
-$("sheet").onsubmit = e => {
-  e.preventDefault();
-  const d = editing;
+function renderStatus(){
+  const s = editing.status;
+  document.querySelectorAll("#statusBtns .st").forEach(b => b.setAttribute("aria-pressed", b.dataset.s === s));
+  const booking = s === "booked";
+  $("apptBox").hidden = !booking;
+  if (booking) renderAppt();
+  const showDetails = detailsOpen || s === "int" || booking;
+  $("details").hidden = !showDetails;
+  $("moreBtn").hidden = showDetails;
+  // Not home / Not interested save on tap; everything else needs the Save button
+  $("saveRow").hidden = !(showDetails || (!editing._new && s));
+  $("saveBtn").textContent = booking ? "Book appointment" : editing._new ? "Save door" : "Save changes";
+  $("saveBtn").className = "btn press " + (booking ? "go" : "primary");
+}
+$("statusBtns").onclick = e => {
+  const b = e.target.closest(".st"); if (!b) return;
+  editing.status = b.dataset.s; vibrate(10);
+  if ((b.dataset.s === "nothome" || b.dataset.s === "no") && !detailsOpen){ commit(); return; }
+  renderStatus();
+  if (b.dataset.s === "booked") setTimeout(() => $("apptBox").scrollIntoView({behavior:"smooth", block:"nearest"}), 60);
+};
+$("moreBtn").onclick = () => { detailsOpen = true; renderStatus(); setTimeout(() => $("fName").focus(), 50); };
+
+/* appointment picker */
+function renderAppt(){
+  const days = []; const base = new Date(); base.setHours(0,0,0,0);
+  for (let i = 0; i < 21; i++){ const d = new Date(base); d.setDate(d.getDate()+i); days.push(d); }
+  if (!apptDay){ const t = new Date(base); t.setDate(t.getDate()+1); apptDay = dayKey(t); }
+  if (!days.some(d => dayKey(d) === apptDay)) days.unshift(fromKey(apptDay));
+  $("dayChips").innerHTML = days.map((d, i) => {
+    const k = dayKey(d);
+    const top = i === 0 && k === dayKey(base) ? "Today" : d.toLocaleDateString([], {weekday:"short"});
+    return `<button type="button" class="dchip press" data-k="${k}" aria-pressed="${k === apptDay}"><small>${top}</small><b>${d.getDate()}</b><small>${d.toLocaleDateString([], {month:"short"})}</small></button>`;
+  }).join("");
+  const times = []; for (let h = 8; h <= 19; h++) for (const m of [0, 30]) times.push(`${z(h)}:${z(m)}`);
+  if (apptTime && !times.includes(apptTime)) times.push(apptTime), times.sort();
+  const now = new Date(), isToday = apptDay === dayKey(now);
+  $("timeChips").innerHTML = times.map(t => {
+    const [h, m] = t.split(":").map(Number); const d = new Date(); d.setHours(h, m, 0, 0);
+    const past = isToday && d < now;
+    return `<button type="button" class="tchip press" data-t="${t}" aria-pressed="${t === apptTime}" ${past ? "disabled style=\"opacity:.35\"" : ""}>${d.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}).replace(" ", "\u202f")}</button>`;
+  }).join("");
+  apptSummary();
+  const sel = $("dayChips").querySelector('[aria-pressed="true"]');
+  if (sel) $("dayChips").scrollLeft = Math.max(0, sel.offsetLeft - 14);
+}
+function apptSummary(){
+  $("apptSummary").textContent = apptDay && apptTime ? fmtAppt({start:new Date(`${apptDay}T${apptTime}`)}) : "Pick a day and time";
+}
+$("dayChips").onclick = e => { const b = e.target.closest(".dchip"); if (!b) return; apptDay = b.dataset.k;
+  if (apptTime && apptDay === dayKey(new Date()) && new Date(`${apptDay}T${apptTime}`) < new Date()) apptTime = null; renderAppt(); };
+$("timeChips").onclick = e => { const b = e.target.closest(".tchip"); if (!b || b.disabled) return; apptTime = b.dataset.t;
+  $("timeChips").querySelectorAll(".tchip").forEach(x => x.setAttribute("aria-pressed", x === b)); apptSummary(); };
+
+/* save */
+sheet.onsubmit = e => { e.preventDefault(); commit(); };
+function commit(){
+  const d = editing; if (!d) return;
   if (!d.status){ toast("Pick how it went first."); return; }
-  d.address = $("fAddr").value.trim(); d.name = $("fName").value.trim(); d.phone = $("fPhone").value.trim(); d.notes = $("fNotes").value.trim();
+  d.address = $("fAddr").value.trim() || d.address; d.name = $("fName").value.trim(); d.phone = $("fPhone").value.trim(); d.notes = $("fNotes").value.trim();
   if (d.status === "booked"){
-    if (!$("fDate").value || !$("fTime").value){ toast("Pick a day and time for the appointment."); return; }
-    d.appt = {start:new Date(`${$("fDate").value}T${$("fTime").value}`).toISOString(), dur:+$("fDur").value};
+    if (!apptDay || !apptTime){ toast("Pick a day and time for the appointment."); $("apptBox").scrollIntoView({behavior:"smooth", block:"nearest"}); return; }
+    d.appt = {start:new Date(`${apptDay}T${apptTime}`).toISOString(), dur:+$("fDur").value};
   } else d.appt = null;
-  d.updatedAt = new Date().toISOString(); d.rep = settings.rep || d.rep;
-  const wasNew = d._new; delete d._new;
+  const now = new Date().toISOString();
+  const old = doors.find(x => x.id === d.id);
+  prevSnapshot = old ? JSON.parse(JSON.stringify(old)) : {__new:d.id};
+  if (!old || old.status !== d.status) d.history = [...(d.history || []), {s:d.status, at:now}];
+  d.updatedAt = now; d.rep = settings.rep || d.rep;
+  const isNew = d._new; delete d._new;
   const i = doors.findIndex(x => x.id === d.id);
   if (i >= 0) doors[i] = d; else doors.push(d);
-  save(); drawDoor(d); tally();
+  saveDoors();
   if (tempMarker){ map.removeLayer(tempMarker); tempMarker = null; }
+  if (dayFilter && dayFilter.key === dayKey(now)) dayFilter.ids.add(d.id);
+  drawDoor(d, isNew);
+  refreshCounts();
+  vibrate(d.status === "booked" ? [15, 60, 25] : 15);
   if (d.status === "booked"){
-    // keep the sheet open so the rep can push it to the calendar
-    editing = {...d}; $("calbox").hidden = false; $("cancelBtn").textContent = "Done"; fillCal(d); $("delRow").hidden = false;
-    $("fMeta").textContent = `Booked ${fmtAppt(d.appt)}`;
-    toast("Booked. Now add it to the calendar.");
-    $("calbox").scrollIntoView({behavior:"smooth", block:"nearest"});
-  } else { closeSheet(); toast(wasNew ? `Saved: ${STATUS[d.status].label}` : "Door updated"); }
-};
+    editing = JSON.parse(JSON.stringify(d));
+    showDone(d);
+  } else {
+    closeSheet();
+    toast(`${isNew ? "Logged" : "Updated"}: ${STATUS[d.status].label}`, d.status, true);
+  }
+}
+function undo(){
+  if (!prevSnapshot) return;
+  if (prevSnapshot.__new){ doors = doors.filter(x => x.id !== prevSnapshot.__new); removeMarker(prevSnapshot.__new); }
+  else { const i = doors.findIndex(x => x.id === prevSnapshot.id); if (i >= 0) doors[i] = prevSnapshot; else doors.push(prevSnapshot); drawDoor(prevSnapshot); }
+  prevSnapshot = null; saveDoors(); refreshCounts(); toast("Undone");
+}
 $("delBtn").onclick = () => {
   const b = $("delBtn");
   if (b.dataset.confirm !== "1"){ b.dataset.confirm = "1"; b.textContent = "Tap again to delete"; setTimeout(() => { b.dataset.confirm = ""; b.textContent = "Delete this door"; }, 3000); return; }
   b.dataset.confirm = ""; b.textContent = "Delete this door";
-  const id = editing.id; doors = doors.filter(x => x.id !== id); save();
-  const m = markers.get(id); if (m){ map.removeLayer(m); markers.delete(id); }
-  closeSheet(); tally(); toast("Door deleted");
+  const id = editing.id; prevSnapshot = JSON.parse(JSON.stringify(doors.find(x => x.id === id)));
+  doors = doors.filter(x => x.id !== id); saveDoors(); removeMarker(id);
+  closeSheet(); refreshCounts(); toast("Door deleted", "", true);
 };
 
-/* ---------- calendar ---------- */
-const z = n => String(n).padStart(2, "0");
-const ymd = d => `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
-const hm = d => `${z(d.getHours())}:${z(d.getMinutes())}`;
-const utc = d => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
-function nextSlot(){ const d = new Date(); d.setDate(d.getDate()+1); d.setHours(10,0,0,0); return d; }
-function fmtAppt(a){ const s = new Date(a.start); return s.toLocaleString([], {weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit"}); }
+/* booked: calendar handoff */
 function evText(d){
-  const title = `Water system appt: ${d.name || d.address.split(",")[0] || "New customer"}`;
-  const details = [d.name && `Homeowner: ${d.name}`, d.phone && `Phone: ${d.phone}`, d.notes && `Notes: ${d.notes}`, d.rep && `Booked by: ${d.rep}`,
-    `Map: https://maps.google.com/?q=${d.lat},${d.lng}`].filter(Boolean).join("\n");
+  const who = d.name || (d.address ? d.address.split(",")[0] : "New customer");
+  const title = `Water system appt: ${who}`;
+  const details = [d.name && `Homeowner: ${d.name}`, d.phone && `Phone: ${d.phone}`, d.address && `Address: ${d.address}`, d.notes && `Notes: ${d.notes}`,
+    d.rep && `Booked by: ${d.rep}`, `Map: https://maps.google.com/?q=${d.lat},${d.lng}`].filter(Boolean).join("\n");
   const s = new Date(d.appt.start), e = new Date(s.getTime() + d.appt.dur*60000);
-  return {title, details, s, e, loc: d.address || `${d.lat},${d.lng}`};
+  return {title, details, s, e, loc:d.address || `${d.lat},${d.lng}`};
 }
-function fillCal(d){
+function showDone(d){
   const t = evText(d);
+  $("doneWhen").textContent = `${fmtAppt(d.appt)}${d.name ? " with " + d.name : ""}`;
   const p = new URLSearchParams({action:"TEMPLATE", text:t.title, dates:`${utc(t.s)}/${utc(t.e)}`, details:t.details, location:t.loc});
   if (settings.owner) p.set("add", settings.owner);
   $("gcalLink").href = "https://calendar.google.com/calendar/render?" + p.toString();
+  if (settings.calendly){
+    let base = settings.calendly.trim(); if (!/^https?:\/\//.test(base)) base = "https://" + base;
+    try{
+      const u = new URL(base); if (d.name) u.searchParams.set("name", d.name);
+      u.searchParams.set("a1", [d.phone, d.address, d.notes].filter(Boolean).join(" · "));
+      const s = new Date(d.appt.start); u.searchParams.set("month", `${s.getFullYear()}-${z(s.getMonth()+1)}`); u.searchParams.set("date", dayKey(s));
+      $("calendlyLink").href = u.toString(); $("calendlyLink").hidden = false; $("gcalLink").className = "btn soft press";
+    } catch { $("calendlyLink").hidden = true; $("gcalLink").className = "btn go press"; }
+  } else { $("calendlyLink").hidden = true; $("gcalLink").className = "btn go press"; }
+  $("formPart").hidden = true; $("donePart").hidden = false; $("sheetBody").scrollTop = 0;
+  setTitle(d);
 }
 function icsFor(d){
   const t = evText(d); const esc = s => s.replace(/\\/g,"\\\\").replace(/\n/g,"\\n").replace(/([,;])/g,"\\$1");
-  const lines = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Door Log//EN","METHOD:PUBLISH","BEGIN:VEVENT",
+  const L_ = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//USA Water Co//Door Log//EN","METHOD:PUBLISH","BEGIN:VEVENT",
     `UID:${d.id}@doorlog`, `DTSTAMP:${utc(new Date())}`, `DTSTART:${utc(t.s)}`, `DTEND:${utc(t.e)}`,
     `SUMMARY:${esc(t.title)}`, `LOCATION:${esc(t.loc)}`, `DESCRIPTION:${esc(t.details)}`, `GEO:${d.lat};${d.lng}`];
-  if (settings.owner) lines.push(`ATTENDEE;CN=Owner;RSVP=TRUE:mailto:${settings.owner}`);
-  lines.push("BEGIN:VALARM","TRIGGER:-PT1H","ACTION:DISPLAY","DESCRIPTION:Water system appointment","END:VALARM","END:VEVENT","END:VCALENDAR");
-  return lines.join("\r\n");
+  if (settings.owner) L_.push(`ATTENDEE;CN=Owner;RSVP=TRUE:mailto:${settings.owner}`);
+  L_.push("BEGIN:VALARM","TRIGGER:-PT1H","ACTION:DISPLAY","DESCRIPTION:Water system appointment","END:VALARM","END:VEVENT","END:VCALENDAR");
+  return L_.join("\r\n");
 }
 function download(name, text, type){
   const url = URL.createObjectURL(new Blob([text], {type}));
   const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
-$("icsBtn").onclick = () => { const d = doors.find(x => x.id === editing.id); if (d?.appt) download(`appointment-${ymd(new Date(d.appt.start))}.ics`, icsFor(d), "text/calendar"); };
+$("icsBtn").onclick = () => { const d = doors.find(x => x.id === editing?.id); if (d?.appt) download(`appointment-${dayKey(d.appt.start)}.ics`, icsFor(d), "text/calendar"); };
 
-/* ---------- tally, list, settings ---------- */
-function tally(){
-  const today = ymd(new Date());
-  const t = s => doors.filter(d => d.status === s && d.updatedAt && ymd(new Date(d.updatedAt)) === today).length;
-  $("cBooked").textContent = t("booked"); $("cInt").textContent = t("int"); $("cNo").textContent = t("no");
-  $("repLabel").textContent = settings.rep ? "· " + settings.rep : "";
+/* drag sheet down to close */
+(() => {
+  let y0 = null, dy = 0;
+  const head = $("sheetHead");
+  head.addEventListener("pointerdown", e => { if (e.target.closest("button")) return; y0 = e.clientY; dy = 0; sheet.classList.add("dragging"); head.setPointerCapture(e.pointerId); });
+  head.addEventListener("pointermove", e => { if (y0 === null) return; dy = Math.max(0, e.clientY - y0); sheet.style.transform = `translateY(${dy}px)`; });
+  const end = () => { if (y0 === null) return; y0 = null; sheet.classList.remove("dragging"); sheet.style.transform = "";
+    if (dy > 90) closeSheet(); };
+  head.addEventListener("pointerup", end); head.addEventListener("pointercancel", end);
+})();
+
+/* ================= views ================= */
+function switchView(v){
+  if (v === openView && v !== "map") v = "map";
+  openView = v;
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.v === v));
+  ["days","doors","settings"].forEach(n => $("v-" + n).classList.toggle("open", n === v));
+  if (v !== "map") closeSheet();
+  if (v === "days") renderDays();
+  if (v === "doors") renderDoors();
+  if (v === "settings") loadSettings();
+  if (v === "map") setTimeout(() => map.invalidateSize(), 50);
+  const view = $("v-" + v); if (view) view.scrollTop = 0;
 }
-tally();
+document.querySelector(".tabs").onclick = e => { const b = e.target.closest("button"); if (b) switchView(b.dataset.v); };
+
+/* activity per day: a door counts on each day it got a status, with that day's last status */
+function activity(){
+  const days = new Map();
+  for (const d of doors){
+    for (const h of d.history || []){
+      if (!h.at) continue;
+      const k = dayKey(h.at);
+      if (!days.has(k)) days.set(k, new Map());
+      days.get(k).set(d.id, {door:d, s:h.s, at:h.at});
+    }
+  }
+  return days;
+}
+function countsOf(entries){ const c = {booked:0, int:0, no:0, nothome:0}; for (const e of entries) c[e.s]++; return c; }
+
+function refreshCounts(){
+  const today = activity().get(dayKey(new Date()));
+  const c = countsOf(today ? today.values() : []);
+  $("tDoors").textContent = today ? today.size : 0; $("tBooked").textContent = c.booked;
+  $("whoLine").textContent = settings.rep ? `${settings.rep} · USA Water Co` : "USA Water Co";
+  if (openView === "days") renderDays();
+  if (openView === "doors") renderDoors();
+}
+
+let selectedDay = null, expanded = new Set();
+function renderDays(){
+  const act = activity();
+  const today = new Date(); today.setHours(0,0,0,0);
+  // week = Monday..today
+  const monday = new Date(today); monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  let wDoors = 0, wBooked = 0;
+  for (const [k, m] of act){ if (fromKey(k) >= monday){ wDoors += m.size; wBooked += countsOf(m.values()).booked; } }
+  $("kWeekDoors").textContent = wDoors; $("kWeekBooked").textContent = wBooked;
+  $("kRate").textContent = wDoors ? Math.round(wBooked / wDoors * 100) + "%" : "–";
+
+  // chart
+  const span = []; for (let i = 13; i >= 0; i--){ const d = new Date(today); d.setDate(d.getDate()-i); span.push(dayKey(d)); }
+  const totals = span.map(k => act.get(k)?.size || 0);
+  const max = Math.max(4, ...totals);
+  const active = totals.filter(Boolean);
+  $("chartAvg").textContent = active.length ? `${Math.round(active.reduce((a,b)=>a+b,0)/active.length)} doors per working day` : "";
+  $("bars").innerHTML = span.map((k, i) => {
+    const m = act.get(k); const c = countsOf(m ? m.values() : []);
+    const segs = ORDER.map(s => c[s] ? `<i style="height:${c[s]/totals[i]*100}%;background:${STATUS[s].color}"></i>` : "").join("");
+    const label = `${fromKey(k).toLocaleDateString([], {weekday:"long", month:"short", day:"numeric"})}: ${totals[i]} doors`;
+    return `<button type="button" class="bar ${k === selectedDay ? "sel" : ""}" data-k="${k}" style="height:${totals[i] ? Math.max(6, totals[i]/max*100) : 3}%" title="${label}" aria-label="${label}">${segs}</button>`;
+  }).join("");
+  $("barLabels").innerHTML = span.map(k => { const d = fromKey(k); return `<span class="${d.getDay() === 1 ? "wk" : ""}">${d.getDay() === 1 || k === span[0] ? d.toLocaleDateString([], {month:"numeric", day:"numeric"}) : d.toLocaleDateString([], {weekday:"narrow"})}</span>`; }).join("");
+
+  // list
+  const keys = [...act.keys()].sort().reverse();
+  if (!keys.length){
+    $("dayList").innerHTML = `<div class="card empty"><b>No doors logged yet</b>Tap a house on the map to log your first door. Each day you work shows up here with its totals.</div>`;
+    return;
+  }
+  $("dayList").innerHTML = keys.map(k => {
+    const m = act.get(k); const entries = [...m.values()].sort((a,b) => a.at.localeCompare(b.at)); const c = countsOf(entries);
+    const date = fromKey(k);
+    const first = fmtTime(entries[0].at), last = fmtTime(entries[entries.length-1].at);
+    const reps = [...new Set(entries.map(e => e.door.rep).filter(Boolean))];
+    const open = expanded.has(k);
+    return `<div class="card day" id="day-${k}">
+      <div class="day-top">
+        <div class="day-date"><b>${relDay(k)}</b><span>${date.toLocaleDateString([], {month:"long", day:"numeric", year: date.getFullYear() === today.getFullYear() ? undefined : "numeric"})} · ${first}${last !== first ? "–" + last : ""}${reps.length ? " · " + esc(reps.join(", ")) : ""}</span></div>
+        <div class="day-count"><b>${m.size}</b><span>${m.size === 1 ? "door" : "doors"}</span></div>
+      </div>
+      <div class="stack">${ORDER.map(s => c[s] ? `<i style="flex:${c[s]};background:${STATUS[s].color}"></i>` : "").join("")}</div>
+      <div class="chips">${ORDER.map(s => `<span class="chip${c[s] ? "" : " zero"}"><i class="dot" style="background:${STATUS[s].color}"></i><b>${c[s]}</b>${STATUS[s].label}</span>`).join("")}</div>
+      <div class="day-actions">
+        <button type="button" class="lnk press" data-act="toggle" data-k="${k}">${open ? "Hide doors" : "See doors"}</button>
+        <button type="button" class="lnk press" data-act="map" data-k="${k}">Show on map</button>
+      </div>
+      ${open ? `<div class="day-doors">${entries.map(e => `<button type="button" class="dd" data-id="${e.door.id}"><time>${fmtTime(e.at)}</time><i class="dot" style="background:${STATUS[e.s].color}"></i><span>${esc(e.door.address || e.door.name || "Unnamed door")}</span><em>${STATUS[e.s].label}</em></button>`).join("")}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+$("bars").onclick = e => { const b = e.target.closest(".bar"); if (!b) return; selectedDay = b.dataset.k;
+  if (activity().has(selectedDay)){ expanded.add(selectedDay); renderDays(); $("day-" + selectedDay)?.scrollIntoView({behavior:"smooth", block:"start"}); } else renderDays(); };
+$("dayList").onclick = e => {
+  const dd = e.target.closest(".dd"); if (dd){ const d = doors.find(x => x.id === dd.dataset.id); if (d){ switchView("map"); map.setView([d.lat, d.lng], 19); openDoor(d.id); } return; }
+  const b = e.target.closest("[data-act]"); if (!b) return; const k = b.dataset.k;
+  if (b.dataset.act === "toggle"){ expanded.has(k) ? expanded.delete(k) : expanded.add(k); renderDays(); }
+  else showDayOnMap(k);
+};
+
+/* show one day on the map */
+function showDayOnMap(k){
+  const m = activity().get(k); if (!m) return;
+  dayFilter = {key:k, ids:new Set(m.keys())};
+  doors.forEach(d => drawDoor(d));
+  $("dayFilterTxt").textContent = `${relDay(k)} · ${m.size} ${m.size === 1 ? "door" : "doors"}`;
+  $("dayFilter").hidden = false;
+  switchView("map");
+  const pts = [...m.values()].map(e => [e.door.lat, e.door.lng]);
+  map.flyToBounds(L.latLngBounds(pts).pad(.25), {maxZoom:18, duration:.8, paddingTopLeft:[0, 80]});
+}
+$("dayFilterOff").onclick = () => { dayFilter = null; $("dayFilter").hidden = true; doors.forEach(d => drawDoor(d)); };
+
+/* doors list */
 let filter = "all";
-function renderList(){
-  const rows = doors.filter(d => filter === "all" || d.status === filter).sort((a,b) => (b.updatedAt||"").localeCompare(a.updatedAt||""));
-  const L_ = $("list"); L_.innerHTML = "";
-  if (!rows.length){ L_.innerHTML = `<div class="empty">${doors.length ? "No doors with this status yet." : "No doors logged yet. Go back to the map and tap a house."}</div>`; return; }
-  rows.forEach(d => {
-    const b = document.createElement("button"); b.className = "item"; b.type = "button";
-    const i = document.createElement("i"); i.style.background = STATUS[d.status].color;
-    const t = document.createElement("div"); t.style.minWidth = "0";
-    const nm = document.createElement("b"); nm.textContent = d.address || `${d.lat.toFixed(5)}, ${d.lng.toFixed(5)}`;
-    const s1 = document.createElement("small");
-    s1.textContent = STATUS[d.status].label + (d.appt ? " · " + fmtAppt(d.appt) : "") + (d.name ? " · " + d.name : "");
-    const s2 = document.createElement("small"); s2.textContent = new Date(d.updatedAt).toLocaleString([], {month:"short", day:"numeric", hour:"numeric", minute:"2-digit"}) + (d.rep ? " · " + d.rep : "");
-    t.append(nm, s1, s2); b.append(i, t);
-    b.onclick = () => { $("panel").hidden = true; map.setView([d.lat, d.lng], 19); openSheet(d.id); };
-    L_.appendChild(b);
-  });
+function renderFilters(){
+  const c = {all:doors.length}; ORDER.forEach(s => c[s] = doors.filter(d => d.status === s).length);
+  $("filters").innerHTML = [["all","All"], ...ORDER.map(s => [s, STATUS[s].label])].map(([k, l]) =>
+    `<button type="button" data-f="${k}" aria-pressed="${k === filter}">${k !== "all" ? `<i class="dot" style="background:${STATUS[k].color}"></i>` : ""}${l} <span class="num">${c[k]}</span></button>`).join("");
 }
-$("filters").onclick = e => { const b = e.target.closest("button"); if (!b) return; filter = b.dataset.f;
-  document.querySelectorAll("#filters button").forEach(x => x.setAttribute("aria-pressed", x === b)); renderList(); };
-$("listBtn").onclick = () => { $("sRep").value = settings.rep; $("sOwner").value = settings.owner; $("sDur").value = settings.dur; renderList(); $("panel").hidden = false; };
-$("panelClose").onclick = () => { $("panel").hidden = true; };
-["sRep","sOwner","sDur"].forEach(id => $(id).addEventListener("change", () => {
-  settings = {rep:$("sRep").value.trim(), owner:$("sOwner").value.trim(), dur:$("sDur").value}; store.set("doorlog.settings", settings); tally(); toast("Settings saved");
+function esc(s){ return String(s ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch])); }
+function renderDoors(){
+  renderFilters();
+  const q = $("q").value.trim().toLowerCase();
+  const rows = doors.filter(d => (filter === "all" || d.status === filter) &&
+    (!q || [d.address, d.name, d.phone, d.notes].join(" ").toLowerCase().includes(q)))
+    .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+  $("doorsLede").textContent = `${doors.length} ${doors.length === 1 ? "door" : "doors"} logged on this phone.`;
+  if (!rows.length){
+    $("list").innerHTML = `<div class="empty"><b>${doors.length ? "Nothing matches" : "No doors yet"}</b>${doors.length ? "Try another search or filter." : "Go to the map and tap a house to log your first door."}</div>`;
+    return;
+  }
+  // upcoming appointments first when looking at booked
+  if (filter === "booked") rows.sort((a, b) => (a.appt?.start || "").localeCompare(b.appt?.start || ""));
+  $("list").innerHTML = rows.map(d => {
+    const line2 = d.status === "booked" && d.appt ? `${fmtAppt(d.appt)}${d.name ? " · " + d.name : ""}`
+      : [STATUS[d.status].label, d.name, new Date(d.updatedAt).toLocaleDateString([], {month:"short", day:"numeric"})].filter(Boolean).join(" · ");
+    return `<button type="button" class="row" data-id="${d.id}"><span class="ic" style="background:${STATUS[d.status].color}">${ICON[d.status]}</span>
+      <div><b>${esc(d.address || "Unnamed door")}</b><small>${esc(line2)}</small></div>
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>`;
+  }).join("");
+}
+$("filters").onclick = e => { const b = e.target.closest("button"); if (!b) return; filter = b.dataset.f; renderDoors(); };
+$("q").addEventListener("input", renderDoors);
+$("list").onclick = e => { const r = e.target.closest(".row"); if (!r) return; const d = doors.find(x => x.id === r.dataset.id);
+  if (d){ switchView("map"); map.setView([d.lat, d.lng], 19, {animate:false}); openDoor(d.id); } };
+
+/* settings */
+function loadSettings(){ $("sRep").value = settings.rep; $("sOwner").value = settings.owner; $("sCalendly").value = settings.calendly; $("sDur").value = settings.dur; }
+["sRep","sOwner","sCalendly","sDur"].forEach(id => $(id).addEventListener("change", () => {
+  settings = {rep:$("sRep").value.trim(), owner:$("sOwner").value.trim(), calendly:$("sCalendly").value.trim(), dur:$("sDur").value};
+  store.set("doorlog.settings", settings); refreshCounts(); toast("Saved");
 }));
 $("csvBtn").onclick = () => {
   const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const head = ["Address","Status","Homeowner","Phone","Appointment","Length (min)","Notes","Rep","Updated","Lat","Lng"];
-  const rows = doors.map(d => [d.address, STATUS[d.status].label, d.name, d.phone, d.appt ? new Date(d.appt.start).toLocaleString() : "", d.appt?.dur || "", d.notes, d.rep, d.updatedAt, d.lat, d.lng].map(q).join(","));
-  download(`doors-${ymd(new Date())}.csv`, [head.map(q).join(","), ...rows].join("\n"), "text/csv");
+  const head = ["Address","Status","Homeowner","Phone","Appointment","Length (min)","Notes","Rep","First knocked","Last updated","Latitude","Longitude"];
+  const rows = doors.map(d => [d.address, STATUS[d.status]?.label, d.name, d.phone, d.appt ? new Date(d.appt.start).toLocaleString() : "", d.appt?.dur || "",
+    d.notes, d.rep, d.createdAt ? new Date(d.createdAt).toLocaleString() : "", d.updatedAt ? new Date(d.updatedAt).toLocaleString() : "", d.lat, d.lng].map(q).join(","));
+  download(`doors-${dayKey(new Date())}.csv`, [head.map(q).join(","), ...rows].join("\n"), "text/csv");
+};
+$("wipeBtn").onclick = () => {
+  const b = $("wipeBtn");
+  if (b.dataset.confirm !== "1"){ b.dataset.confirm = "1"; b.textContent = `Tap again to erase ${doors.length} doors`; setTimeout(() => { b.dataset.confirm = ""; b.textContent = "Erase all doors on this phone"; }, 4000); return; }
+  b.dataset.confirm = ""; b.textContent = "Erase all doors on this phone";
+  doors.forEach(d => removeMarker(d.id)); doors = []; saveDoors(); refreshCounts(); toast("All doors erased");
 };
 
-/* ---------- misc ---------- */
+/* toast + hint */
 let toastT;
-function toast(msg){ const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3200); }
-if (doors.length) setTimeout(() => $("hint").hidden = true, 6000);
+function toast(msg, status, withUndo){
+  $("toastTxt").textContent = msg;
+  $("toastDot").hidden = !status; if (status) $("toastDot").style.background = STATUS[status].color;
+  $("toastUndo").hidden = !withUndo;
+  $("toast").classList.add("show"); clearTimeout(toastT);
+  toastT = setTimeout(() => $("toast").classList.remove("show"), withUndo ? 5000 : 2600);
+}
+$("toastUndo").onclick = () => { $("toast").classList.remove("show"); undo(); };
+function hideHint(){ $("hint").classList.add("gone"); store.set("doorlog.hinted", true); }
+if (store.get("doorlog.hinted", false) || doors.length) $("hint").classList.add("gone");
+
+saveDoors();
+refreshCounts();
 })();
 </script>
 </body>

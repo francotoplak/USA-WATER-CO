@@ -40,3 +40,27 @@ Any doors already on a tablet are uploaded when you connect it.
 ## Updating the script
 
 If you set up the script before this update (November 6, 2026), paste in the latest [`apps-script/Code.gs`](apps-script/Code.gs), then use **Deploy → Manage deployments → Edit → Version: New version → Deploy**. The link stays the same.
+
+## Adding another owner's team (for example, Craig in Arizona)
+
+Each owner gets a separate team with its own Google Sheet, Google Calendar, reps and PIN. Doors from one team never land on another team's sheet or calendar.
+
+1. **Craig does steps 1 to 7 above in his own Google account.** He makes his own sheet, pastes in `Code.gs`, and deploys it. That way, bookings go on his calendar, not yours.
+2. In step 4, Craig also changes two lines at the top of the script:
+   - `TEAM_NAME` to `'USA Water Co · Arizona'`
+   - `TEAM_PIN` to his own PIN
+3. Craig sends over his web app link (the one ending in `/exec`).
+4. Add both teams to `teams.json` in this repo, with a short code for each:
+
+   ```json
+   {
+     "teams": {
+       "OH": { "name": "USA Water Co", "url": "https://script.google.com/macros/s/…dad's link…/exec" },
+       "AZ": { "name": "USA Water Co · Arizona", "url": "https://script.google.com/macros/s/…Craig's link…/exec" }
+     }
+   }
+   ```
+
+5. Reps open **Settings → Team sync**, type their team code (`OH` or `AZ`) and that team's PIN, and they're connected. Nobody has to paste a long link anymore.
+
+**Company view:** owners and managers see a **Company** tab under Stats. It shows every team side by side: doors, bookings, booking rate, upcoming appointments and top reps. To show another team's numbers, enter that team's PIN once on its card. The Company view is read only, so nothing done there changes the other team's doors.

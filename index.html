@@ -339,6 +339,24 @@ textarea{min-height:76px;resize:none}
 .tchip.taken{text-decoration:line-through;opacity:.4}
 .dchip .bk{display:block;height:4px;margin:3px auto 0;width:4px;border-radius:2px;background:var(--s-booked)}
 .dchip[aria-pressed="true"] .bk{background:#fff}
+.adv{margin-top:12px;font-size:14px;color:var(--muted)}
+.adv summary{cursor:pointer;font-weight:600}
+.co-grid{display:grid;gap:12px;margin-top:14px}
+@media (min-width:768px){.co-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.co{padding:16px}
+.co h3{font:700 22px var(--display);margin:0;display:flex;align-items:center;gap:8px}
+.co h3 small{font:600 12px var(--body);color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.co .kpis{margin-top:12px}
+.co .kpi{background:var(--surface-2);border:0}
+.co .kpi b{font-size:28px}
+.co ol{margin:12px 0 0;padding:0;list-style:none}
+.co li{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:14.5px}
+.co li:last-child{border-bottom:0}
+.co li b{font-family:var(--display);color:var(--s-booked)}
+.co .err{color:var(--s-no);font-size:14px;margin-top:8px}
+.co-pin{display:flex;gap:8px;margin-top:12px}
+.co-pin input{flex:1}
+.co-pin button{border:0;border-radius:12px;background:var(--brand);color:#fff;font-weight:700;padding:0 16px}
 .taken-list{padding:10px 14px 0;font-size:13.5px;color:var(--muted)}
 .taken-list b{color:var(--ink);font-weight:600}
 .tchip[aria-pressed="true"]{background:var(--s-booked);border-color:var(--s-booked);color:#fff}
@@ -441,7 +459,13 @@ textarea{min-height:76px;resize:none}
 <!-- Days -->
 <section class="view" id="v-days" aria-label="Stats">
   <div class="view-in">
-    <div class="seg" id="statsSeg"><button type="button" data-s="days" aria-pressed="true">Days</button><button type="button" data-s="board" aria-pressed="false">Leaderboard</button></div>
+    <div class="seg" id="statsSeg"><button type="button" data-s="days" aria-pressed="true">Days</button><button type="button" data-s="board" aria-pressed="false">Leaderboard</button><button type="button" data-s="company" aria-pressed="false" id="companyTab" hidden>Company</button></div>
+    <div id="companyPane" hidden>
+      <h1>Company</h1>
+      <p class="lede">Every team side by side. Only owners and managers see this page.</p>
+      <div class="filters" id="coPer" style="margin-top:14px"><button type="button" data-p="today">Today</button><button type="button" data-p="week">This week</button><button type="button" data-p="month">This month</button><button type="button" data-p="all">All time</button></div>
+      <div class="co-grid" id="coList"></div>
+    </div>
     <div id="boardPane" hidden>
       <h1>Leaderboard</h1>
       <p class="lede">Reps ranked by appointments booked, then doors knocked.</p>
@@ -515,9 +539,15 @@ textarea{min-height:76px;resize:none}
     </div>
     <div class="sec">Team sync</div>
     <div class="card settings">
-      <p class="help" style="margin-top:14px">Connect every tablet to the company's Google Sheet so doors and bookings show up on all of them. <a href="https://github.com/francotoplak/usa-water-co/blob/main/SETUP.md" target="_blank" rel="noopener" style="color:var(--brand-2);font-weight:600">Setup steps</a></p>
-      <label class="field"><span>Sync link</span><input id="sUrl" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
-      <label class="field"><span>Team PIN</span><input id="sPin" inputmode="numeric" placeholder="PIN from the owner" autocomplete="off"></label>
+      <p class="help" style="margin-top:14px">Join your team so doors, bookings and the leaderboard are shared with everyone on it. Get the team code and PIN from your owner. <a href="https://github.com/francotoplak/usa-water-co/blob/main/SETUP.md" target="_blank" rel="noopener" style="color:var(--brand-2);font-weight:600">Setup steps</a></p>
+      <div class="grid2">
+        <label class="field"><span>Team code</span><input id="sCode" autocapitalize="characters" placeholder="e.g. OHIO" autocomplete="off" style="text-transform:uppercase"></label>
+        <label class="field"><span>Team PIN</span><input id="sPin" inputmode="numeric" placeholder="PIN" autocomplete="off"></label>
+      </div>
+      <details class="adv"><summary>Use a sync link instead</summary>
+        <label class="field"><span>Sync link</span><input id="sUrl" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+      </details>
+      <p class="help" id="switchWarn" hidden style="color:var(--s-no)">Switching teams clears this device's doors from the old team. They stay safe in that team's sheet.</p>
       <div class="syncline"><i class="sync" id="syncDot2"></i><span id="syncTxt">Not connected. Doors stay on this device.</span></div>
       <div class="stack-btns"><button class="btn soft press" id="syncBtn" type="button">Sync now</button></div>
     </div>
@@ -990,9 +1020,9 @@ function switchView(v){
 document.querySelector(".tabs").onclick = e => { const b = e.target.closest("button"); if (b) switchView(b.dataset.v); };
 
 /* activity per day: a door counts on each day it got a status, with that day's last status */
-function activity(rep){
+function activity(rep, list = doors){
   const days = new Map();
-  for (const d of doors){
+  for (const d of list){
     if (rep && (d.rep || "") !== rep) continue;
     for (const h of d.history || []){
       if (!h.at) continue;
@@ -1009,8 +1039,10 @@ function refreshCounts(){
   const today = activity(currentMember()?.name || "").get(dayKey(new Date()));
   const c = countsOf(today ? today.values() : []);
   $("tDoors").textContent = today ? today.size : 0; $("tBooked").textContent = c.booked;
-  $("whoLine").textContent = settings.rep ? `${settings.rep} · USA Water Co` : "USA Water Co";
-  if (openView === "days") (statsPane === "board" ? renderBoard() : renderDays());
+  const org = sync.teamName || "USA Water Co";
+  $("whoLine").textContent = settings.rep ? `${settings.rep} · ${org}` : org;
+  $("companyTab").hidden = !(isManager() && sync.url);
+  if (openView === "days") (statsPane === "board" ? renderBoard() : statsPane === "company" ? renderCompany(false) : renderDays());
   if (openView === "doors") renderDoors();
   if (openView === "follow") renderFollow();
   const due = doors.filter(isDue).length;
@@ -1199,18 +1231,50 @@ $("list").onclick = e => { const r = e.target.closest(".row"); if (!r) return; c
   if (d){ switchView("map"); map.setView([d.lat, d.lng], 19, {animate:false}); openDoor(d.id); } };
 
 /* settings */
-function loadSettings(){ renderTeamCards(); $("wipeBtn").hidden = !!(sync.url && sync.pin); $("sUrl").value = sync.url; $("sPin").value = sync.pin; $("sRep").value = settings.rep; $("sOwner").value = settings.owner; $("sCalendly").value = settings.calendly; $("sDur").value = settings.dur; }
+function loadSettings(){ renderTeamCards(); $("wipeBtn").hidden = !!(sync.url && sync.pin); $("sUrl").value = sync.url; $("sPin").value = sync.pin; $("sCode").value = sync.code || ""; $("switchWarn").hidden = true; $("sRep").value = settings.rep; $("sOwner").value = settings.owner; $("sCalendly").value = settings.calendly; $("sDur").value = settings.dur; }
 ["sRep","sOwner","sCalendly","sDur"].forEach(id => $(id).addEventListener("change", () => {
   settings = {rep:$("sRep").value.trim(), owner:$("sOwner").value.trim(), calendly:$("sCalendly").value.trim(), dur:$("sDur").value};
   store.set("doorlog.settings", settings); refreshCounts(); toast("Saved");
 }));
-["sUrl","sPin"].forEach(id => $(id).addEventListener("change", () => {
-  const url = $("sUrl").value.trim(), pin = $("sPin").value.trim();
-  const changed = url !== sync.url || pin !== sync.pin;
-  sync.url = url; sync.pin = pin; store.set("doorlog.sync", {url, pin});
-  $("wipeBtn").hidden = !!(url && pin);
-  if (changed && url && pin){ sync.cursor = 0; store.set("doorlog.cursor", 0); [...doors, ...team, ...territories].forEach(d => outbox[d.id] = JSON.parse(JSON.stringify(d))); saveOutbox(); syncNow(true); }
-  else setSync(url && pin ? "pending" : "off");
+/* teams directory: team code -> that owner's sync link (teams.json in this site) */
+let teamDir = null;
+async function loadTeamDir(){
+  if (teamDir) return teamDir;
+  try { const r = await fetch("teams.json", {cache:"no-store"}); teamDir = (await r.json()).teams || {}; }
+  catch { teamDir = {}; }
+  return teamDir;
+}
+async function connectFromSettings(){
+  const code = $("sCode").value.trim().toUpperCase(), pin = $("sPin").value.trim();
+  let url = $("sUrl").value.trim();
+  if (code){
+    const dir = await loadTeamDir();
+    if (!dir[code]){ setSync("error", `There's no team with the code ${code}. Check it with your owner.`); return; }
+    url = dir[code].url; $("sUrl").value = url;
+  }
+  if (!url || !pin){ setSync(url || pin ? "pending" : "off"); return; }
+  connectTo(url, pin, code);
+}
+function connectTo(url, pin, code){
+  if (url === sync.url && pin === sync.pin && code === (sync.code || "")){ syncNow(true); return; }
+  const switching = !!sync.url && url !== sync.url;
+  if (switching){
+    // different team: start clean so one team's doors never leak into another's sheet
+    doors.forEach(d => removeMarker(d.id)); doors = []; team = []; territories = []; outbox = {};
+    user = null; store.set("doorlog.user", null); saveDoors(); saveTeam(); saveTerr(); saveOutbox();
+    sync.busy = []; sync.teamName = ""; store.set("doorlog.teamName", "");
+  }
+  const firstConnect = !sync.url;
+  sync.url = url; sync.pin = pin; sync.code = code; store.set("doorlog.sync", {url, pin, code});
+  sync.cursor = 0; store.set("doorlog.cursor", 0);
+  if (firstConnect){ [...doors, ...team, ...territories].forEach(d => outbox[d.id] = JSON.parse(JSON.stringify(d))); saveOutbox(); }
+  $("wipeBtn").hidden = true; $("switchWarn").hidden = true;
+  afterMetaChange(); syncNow(true);
+}
+["sCode","sPin","sUrl"].forEach(id => $(id).addEventListener("change", () => {
+  if (id === "sCode" || id === "sUrl") $("switchWarn").hidden = !sync.url;
+  if (id === "sUrl") $("sCode").value = "";
+  connectFromSettings();
 }));
 $("syncBtn").onclick = () => syncNow(true);
 $("csvBtn").onclick = () => {
@@ -1501,10 +1565,83 @@ $("boardList").onclick = e => { const b = e.target.closest("[data-rep]"); if (!b
 function setStatsPane(p){
   statsPane = p;
   $("statsSeg").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.s === p));
-  $("daysPane").hidden = p !== "days"; $("boardPane").hidden = p !== "board";
-  if (p === "days") renderDays(); else renderBoard();
+  $("daysPane").hidden = p !== "days"; $("boardPane").hidden = p !== "board"; $("companyPane").hidden = p !== "company";
+  if (p === "days") renderDays(); else if (p === "board") renderBoard(); else renderCompany(true);
   $("v-days").scrollTop = 0;
 }
+/* ----- company: every team side by side (owners/managers) ----- */
+let coPeriod = "week";
+const coCache = {};   // url -> {at, doors, teamName, err}
+let coPins = store.get("doorlog.coPins", {});
+async function fetchTeam(url, pin, force){
+  const c = coCache[url];
+  if (c && !force && Date.now() - c.at < 60000) return c;
+  try {
+    const r = await fetch(`${url}?key=${encodeURIComponent(pin)}&since=0`);
+    const j = await r.json();
+    coCache[url] = j.ok ? {at:Date.now(), doors:(j.doors || []).filter(d => d && !d.deleted && !String(d.id).match(/^[mt]_/)), teamName:j.teamName || ""}
+                        : {at:Date.now(), err: j.error === "pin" ? "That PIN didn't work for this team." : "Couldn't load this team."};
+  } catch { coCache[url] = {at:Date.now(), err:"Couldn't reach this team's sheet. Check the connection."}; }
+  return coCache[url];
+}
+function teamStats(list){
+  const start = periodStart(coPeriod), act = activity("", list), reps = new Map();
+  let n = 0, booked = 0, int = 0;
+  for (const [k, m] of act){
+    if (fromKey(k) < start) continue;
+    for (const e of m.values()){
+      n++; if (e.s === "booked") booked++; if (e.s === "int") int++;
+      const name = e.door.rep || "Unknown rep";
+      const r = reps.get(name) || {name, doors:0, booked:0}; r.doors++; if (e.s === "booked") r.booked++; reps.set(name, r);
+    }
+  }
+  const now = Date.now();
+  const upcoming = list.filter(d => d.status === "booked" && d.appt && new Date(d.appt.start).getTime() > now).length;
+  const top = [...reps.values()].sort((a, b) => b.booked - a.booked || b.doors - a.doors).slice(0, 3);
+  return {n, booked, int, upcoming, top};
+}
+function coCard(name, code, st, extra = ""){
+  return `<div class="card co"><h3>${esc(name)}${code ? ` <small>${esc(code)}</small>` : ""}</h3>
+    <div class="kpis"><div class="kpi"><b>${st.n}</b><span>Doors</span></div><div class="kpi"><b>${st.booked}</b><span>Booked</span></div><div class="kpi"><b>${st.n ? Math.round(st.booked / st.n * 100) : 0}%</b><span>Booking rate</span></div></div>
+    <p class="help" style="margin:10px 0 0">${st.int} interested · ${st.upcoming} upcoming appointment${st.upcoming === 1 ? "" : "s"}</p>
+    ${st.top.length ? `<ol>${st.top.map(r => `<li><span>${esc(r.name)} <span class="help">· ${r.doors} doors</span></span><b>${r.booked}</b></li>`).join("")}</ol>` : ""}${extra}</div>`;
+}
+function coLocked(name, code, msg){
+  return `<div class="card co"><h3>${esc(name)} <small>${esc(code)}</small></h3>
+    <p class="help" style="margin:10px 0 0">Enter this team's PIN once to see their numbers here. You can look, but nothing you do here changes their doors.</p>
+    ${msg ? `<div class="err">${esc(msg)}</div>` : ""}
+    <form class="co-pin" data-code="${esc(code)}"><input type="password" inputmode="numeric" placeholder="Team PIN" aria-label="${esc(name)} team PIN"><button type="submit">Show</button></form></div>`;
+}
+let coSeq = 0;
+async function renderCompany(force){
+  if (openView !== "days" || statsPane !== "company") return;
+  const seq = ++coSeq;
+  $("coPer").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.p === coPeriod));
+  const dir = await loadTeamDir();
+  const ownName = sync.teamName || "USA Water Co";
+  const ownCode = sync.code || Object.keys(dir).find(c => dir[c].url === sync.url) || "";
+  const cards = [{html: coCard(ownName, ownCode, teamStats(doors), `<p class="help" style="margin:8px 0 0">Your team</p>`)}];
+  const others = Object.entries(dir).filter(([c, t]) => t.url && t.url !== sync.url);
+  const results = await Promise.all(others.map(async ([code, t]) => {
+    const pin = coPins[code];
+    if (!pin) return coLocked(t.name || code, code);
+    const r = await fetchTeam(t.url, pin, force);
+    if (r.err) return coLocked(r.teamName || t.name || code, code, r.err);
+    return coCard(r.teamName || t.name || code, code, teamStats(r.doors));
+  }));
+  if (seq !== coSeq) return;
+  results.forEach(html => cards.push({html}));
+  $("coList").innerHTML = cards.map(c => c.html).join("") +
+    (others.length ? "" : `<div class="card empty"><b>Only one team so far</b>When another owner's team is added, it shows up here next to yours.</div>`);
+}
+$("coPer").onclick = e => { const b = e.target.closest("[data-p]"); if (b){ coPeriod = b.dataset.p; renderCompany(false); } };
+$("coList").addEventListener("submit", e => {
+  const f = e.target.closest(".co-pin"); if (!f) return; e.preventDefault();
+  const pin = f.querySelector("input").value.trim(); if (!pin) return;
+  const code = f.dataset.code; coPins[code] = pin; store.set("doorlog.coPins", coPins);
+  const t = teamDir && teamDir[code]; if (t) delete coCache[t.url];
+  renderCompany(true);
+});
 $("statsSeg").onclick = e => { const b = e.target.closest("[data-s]"); if (b) setStatsPane(b.dataset.s); };
 function renderRepFilter(){
   const names = [...new Set([...team.map(m => m.name), ...doors.map(d => d.rep).filter(Boolean)])].sort();
@@ -1561,6 +1698,7 @@ async function syncNow(manual){
     applyRemote(j2.doors || []);
     sync.cursor = j2.now; store.set("doorlog.cursor", j2.now);
     sync.calendar = !!j2.calendar; store.set("doorlog.serverCal", sync.calendar);
+    if (j2.teamName !== undefined && j2.teamName !== sync.teamName){ sync.teamName = j2.teamName; store.set("doorlog.teamName", j2.teamName); refreshCounts(); }
     if (Array.isArray(j2.busy)){ sync.busy = j2.busy; store.set("doorlog.busy", j2.busy); }
     if (typeof j2.buffer === "number"){ sync.buffer = j2.buffer; store.set("doorlog.buffer", j2.buffer); }
     lastSync = Date.now(); store.set("doorlog.lastSync", lastSync);
@@ -1597,6 +1735,7 @@ function applyRemote(list){
 }
 sync.calendar = store.get("doorlog.serverCal", false);
 sync.busy = store.get("doorlog.busy", []);
+sync.teamName = store.get("doorlog.teamName", "");
 { const b = store.get("doorlog.buffer", null); if (typeof b === "number") sync.buffer = b; }
 // The sheet refused a booking because another rep took that time first
 function bookingConflict(cf){

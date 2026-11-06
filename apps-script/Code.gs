@@ -7,6 +7,7 @@
  */
 
 // ---- Settings: change these ----
+const TEAM_NAME = 'USA Water Co';  // shown at the top of the app, e.g. 'USA Water Co · Arizona'
 const TEAM_PIN = '2468';          // every tablet enters this PIN in Door Log → Settings → Team sync
 const ADD_TO_CALENDAR = true;     // put Booked doors straight on this Google account's calendar
 const TRAVEL_MINUTES = 30;        // gap kept free before and after every appointment
@@ -104,7 +105,7 @@ function doGet(e) {
       else { try { records.push(JSON.parse(r[h['Data']])); } catch (err) {} }
     });
   });
-  return out({ ok: true, now: Date.now(), calendar: ADD_TO_CALENDAR, buffer: TRAVEL_MINUTES, busy: calendarBusy(), doors: records });
+  return out({ ok: true, now: Date.now(), teamName: TEAM_NAME, calendar: ADD_TO_CALENDAR, buffer: TRAVEL_MINUTES, busy: calendarBusy(), doors: records });
 }
 
 function doPost(e) {

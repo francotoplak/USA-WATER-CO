@@ -82,6 +82,24 @@ button{cursor:pointer;-webkit-user-select:none;user-select:none}
 @keyframes blink{50%{opacity:.35}}
 .syncline{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:14px;color:var(--muted)}
 .syncline .sync{margin:0;flex:none}
+.shift{flex:none;border:0;border-radius:12px;padding:0 12px;height:42px;font:700 14px var(--display);letter-spacing:.02em;background:var(--s-booked);color:#fff;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.shift[data-state=on]{background:#e6f6ec;color:#127a3e}
+.shift[data-state=on] i{width:8px;height:8px;border-radius:50%;background:var(--s-booked);animation:shpulse 1.6s infinite}
+.shift[data-state=done]{background:var(--surface-2);color:var(--muted)}
+@keyframes shpulse{50%{opacity:.3}}
+@media (max-width:479px){.shift{padding:0 10px;font-size:13px}.brand b{white-space:nowrap}.top{gap:8px}}
+.hours-wrap{overflow-x:auto;margin-top:10px}
+.hours{width:100%;border-collapse:collapse;font-size:14.5px;min-width:640px}
+.hours th{text-align:left;font:700 11px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--line)}
+.hours td{padding:12px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;white-space:nowrap}
+.hours tr:last-child td{border-bottom:0}
+.hours td b{font-family:var(--display)}
+.hours .gap{display:block;font-size:12px;color:var(--muted)}
+.hours .gap.late{color:#b86e00;font-weight:700}
+.hours .no{color:var(--muted)}
+.hours .live{color:#127a3e;font-weight:700}
+.hday{margin-top:18px;padding:4px 0 0}
+.hday h3{font:700 18px var(--display);margin:0;padding:12px 14px 0}
 .today{display:flex;gap:6px}
 .today div{text-align:center;min-width:44px;padding:4px 6px;border-radius:10px;background:var(--surface-2)}
 .today b{display:block;font:700 20px/1 var(--display);font-variant-numeric:tabular-nums}
@@ -425,6 +443,7 @@ textarea{min-height:76px;resize:none}
 <div class="top">
   <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2.5C9 7 6 10.4 6 14a6 6 0 0 0 12 0c0-3.6-3-7-6-11.5Z"/></svg></div>
   <div class="brand"><b>Door Log<i class="sync" id="syncDot" hidden title="Sync status"></i></b><small id="whoLine">USA Water Co</small></div>
+  <button type="button" class="shift press" id="shiftBtn" hidden>Start day</button>
   <div class="today" aria-label="Today">
     <div><b id="tDoors">0</b><span>Doors</span></div>
     <div class="bk"><b id="tBooked">0</b><span>Booked</span></div>
@@ -459,7 +478,12 @@ textarea{min-height:76px;resize:none}
 <!-- Days -->
 <section class="view" id="v-days" aria-label="Stats">
   <div class="view-in">
-    <div class="seg" id="statsSeg"><button type="button" data-s="days" aria-pressed="true">Days</button><button type="button" data-s="board" aria-pressed="false">Leaderboard</button><button type="button" data-s="company" aria-pressed="false" id="companyTab" hidden>Company</button></div>
+    <div class="seg" id="statsSeg"><button type="button" data-s="days" aria-pressed="true">Days</button><button type="button" data-s="board" aria-pressed="false">Leaderboard</button><button type="button" data-s="hours" aria-pressed="false" id="hoursTab" hidden>Hours</button><button type="button" data-s="company" aria-pressed="false" id="companyTab" hidden>Company</button></div>
+    <div id="hoursPane" hidden>
+      <h1>Hours</h1>
+      <p class="lede">When each rep started and ended their day, next to their first and last door. Only owners and managers see this page.</p>
+      <div id="hoursList"></div>
+    </div>
     <div id="companyPane" hidden>
       <h1>Company</h1>
       <p class="lede">Every team side by side. Only owners and managers see this page.</p>
@@ -662,6 +686,7 @@ const store = {
   set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
 let doors = store.get("doorlog.doors", []);
+let shifts = store.get("doorlog.shifts", []);   // {id:"s_<member>_<day>", kind:"shift", memberId, rep, day, start, end, updatedAt}
 // migrate: every door keeps a history of status changes so the Days page can count activity per day
 doors.forEach(d => { if (!Array.isArray(d.history)) d.history = d.status ? [{s:d.status, at:d.updatedAt || d.createdAt}] : []; });
 let settings = Object.assign({rep:"", owner:"", calendly:"", dur:"90"}, store.get("doorlog.settings", {}));
@@ -1042,7 +1067,9 @@ function refreshCounts(){
   const org = sync.teamName || "USA Water Co";
   $("whoLine").textContent = settings.rep ? `${settings.rep} · ${org}` : org;
   $("companyTab").hidden = !(isManager() && sync.url);
-  if (openView === "days") (statsPane === "board" ? renderBoard() : statsPane === "company" ? renderCompany(false) : renderDays());
+  $("hoursTab").hidden = !(isManager() && team.length);
+  renderShiftBtn();
+  if (openView === "days") (statsPane === "board" ? renderBoard() : statsPane === "company" ? renderCompany(false) : statsPane === "hours" ? renderHours() : renderDays());
   if (openView === "doors") renderDoors();
   if (openView === "follow") renderFollow();
   const due = doors.filter(isDue).length;
@@ -1260,14 +1287,14 @@ function connectTo(url, pin, code){
   const switching = !!sync.url && url !== sync.url;
   if (switching){
     // different team: start clean so one team's doors never leak into another's sheet
-    doors.forEach(d => removeMarker(d.id)); doors = []; team = []; territories = []; outbox = {};
+    doors.forEach(d => removeMarker(d.id)); doors = []; team = []; territories = []; shifts = []; saveShifts(); outbox = {};
     user = null; store.set("doorlog.user", null); saveDoors(); saveTeam(); saveTerr(); saveOutbox();
     sync.busy = []; sync.teamName = ""; store.set("doorlog.teamName", "");
   }
   const firstConnect = !sync.url;
   sync.url = url; sync.pin = pin; sync.code = code; store.set("doorlog.sync", {url, pin, code});
   sync.cursor = 0; store.set("doorlog.cursor", 0);
-  if (firstConnect){ [...doors, ...team, ...territories].forEach(d => outbox[d.id] = JSON.parse(JSON.stringify(d))); saveOutbox(); }
+  if (firstConnect){ [...doors, ...team, ...territories, ...shifts].forEach(d => outbox[d.id] = JSON.parse(JSON.stringify(d))); saveOutbox(); }
   $("wipeBtn").hidden = true; $("switchWarn").hidden = true;
   afterMetaChange(); syncNow(true);
 }
@@ -1565,9 +1592,87 @@ $("boardList").onclick = e => { const b = e.target.closest("[data-rep]"); if (!b
 function setStatsPane(p){
   statsPane = p;
   $("statsSeg").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.s === p));
-  $("daysPane").hidden = p !== "days"; $("boardPane").hidden = p !== "board"; $("companyPane").hidden = p !== "company";
-  if (p === "days") renderDays(); else if (p === "board") renderBoard(); else renderCompany(true);
+  $("daysPane").hidden = p !== "days"; $("boardPane").hidden = p !== "board"; $("companyPane").hidden = p !== "company"; $("hoursPane").hidden = p !== "hours";
+  if (p === "days") renderDays(); else if (p === "board") renderBoard(); else if (p === "hours") renderHours(); else renderCompany(true);
   $("v-days").scrollTop = 0;
+}
+/* ----- start day / end day ----- */
+function saveShifts(){ store.set("doorlog.shifts", shifts); }
+const shiftId = (mid, day) => `s_${mid}_${day}`;
+function myShift(){ const m = currentMember(); return m ? shifts.find(x => x.id === shiftId(m.id, dayKey(new Date()))) || null : null; }
+const hm = ms => { const m = Math.max(0, Math.round(ms / 60000)); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${z(m % 60)}m`; };
+function putShift(rec){
+  rec.updatedAt = new Date().toISOString();
+  const i = shifts.findIndex(x => x.id === rec.id); if (i >= 0) shifts[i] = rec; else shifts.push(rec);
+  saveShifts(); queueChange(rec); renderShiftBtn();
+  if (openView === "days" && statsPane === "hours") renderHours();
+}
+function applyShift(rd){
+  const i = shifts.findIndex(x => x.id === rd.id);
+  if (rd.deleted){ if (i >= 0) shifts.splice(i, 1); }
+  else if (i < 0) shifts.push(rd);
+  else if ((shifts[i].updatedAt || "") <= (rd.updatedAt || "")) shifts[i] = rd;
+  saveShifts(); renderShiftBtn();
+  if (openView === "days" && statsPane === "hours") renderHours();
+}
+function renderShiftBtn(){
+  const b = $("shiftBtn"), m = currentMember();
+  b.hidden = !m; if (!m) return;
+  const sh = myShift(), st = !sh ? "off" : sh.end ? "done" : "on";
+  b.dataset.state = st;
+  b.innerHTML = st === "off" ? "Start day" : st === "on" ? `<i></i>${hm(Date.now() - new Date(sh.start))}` : "Ended";
+  b.title = st === "off" ? "Clock in for today" : st === "on" ? `Started at ${fmtTime(sh.start)}. Tap to end your day.` : `Ended at ${fmtTime(sh.end)}`;
+}
+setInterval(renderShiftBtn, 30000);
+$("shiftBtn").onclick = () => {
+  const m = currentMember(); if (!m) return;
+  const sh = myShift(), day = dayKey(new Date());
+  if (!sh){
+    putShift({id:shiftId(m.id, day), kind:"shift", memberId:m.id, rep:m.name, day, start:new Date().toISOString(), end:null});
+    vibrate(12); toast(`Day started at ${fmtTime(new Date())}. Good luck out there!`); return;
+  }
+  const today = activity(m.name).get(day), n = today ? today.size : 0, c = countsOf(today ? today.values() : []);
+  if (!sh.end){
+    openModal(`<h2>End your day?</h2>
+      <p class="help" style="margin-top:8px">You started at <b>${fmtTime(sh.start)}</b>, ${hm(Date.now() - new Date(sh.start))} ago. Today: <b>${n}</b> door${n === 1 ? "" : "s"}, <b>${c.booked}</b> booked.</p>
+      <div class="modal-actions"><button type="button" class="btn soft press" data-close>Not yet</button><button type="button" class="btn primary press" id="endDay">End day</button></div>`);
+    $("endDay").onclick = () => { putShift({...sh, end:new Date().toISOString()}); closeModal(); toast(`Day ended. ${hm(new Date(sh.end || Date.now()) - new Date(sh.start))} on the clock.`); };
+  } else {
+    openModal(`<h2>Day ended</h2>
+      <p class="help" style="margin-top:8px">${fmtTime(sh.start)} to ${fmtTime(sh.end)} (${hm(new Date(sh.end) - new Date(sh.start))}). ${n} door${n === 1 ? "" : "s"}, ${c.booked} booked.</p>
+      <div class="modal-actions"><button type="button" class="btn soft press" data-close>Close</button><button type="button" class="btn primary press" id="resumeDay">Back out knocking</button></div>`);
+    $("resumeDay").onclick = () => { putShift({...sh, end:null}); closeModal(); toast("Day resumed"); };
+  }
+};
+function renderHours(){
+  const days = new Map();
+  const row = (day, rep) => { if (!days.has(day)) days.set(day, new Map()); const m = days.get(day);
+    if (!m.has(rep)) m.set(rep, {rep, start:null, end:null, first:null, last:null, doors:new Set(), booked:0}); return m.get(rep); };
+  for (const sh of shifts){ if (!sh.start) continue; const r = row(sh.day, sh.rep || "Unknown rep"); r.start = sh.start; r.end = sh.end || null; }
+  for (const d of doors) for (const h of d.history || []){
+    if (!h.at) continue; const r = row(dayKey(h.at), d.rep || "Unknown rep");
+    if (!r.first || h.at < r.first) r.first = h.at; if (!r.last || h.at > r.last) r.last = h.at;
+    r.doors.add(d.id); if (h.s === "booked") r.booked++;
+  }
+  const keys = [...days.keys()].sort().reverse().slice(0, 14), todayK = dayKey(new Date());
+  if (!keys.length){ $("hoursList").innerHTML = `<div class="card empty" style="margin-top:14px"><b>No days yet</b>When reps tap <b>Start day</b> at the top of the map, their hours show up here.</div>`; return; }
+  const t = v => v ? fmtTime(v) : `<span class="no">—</span>`;
+  $("hoursList").innerHTML = keys.map(k => {
+    const rows = [...days.get(k).values()].sort((a, b) => (a.start || a.first || "").localeCompare(b.start || b.first || ""));
+    return `<div class="card hday"><h3>${esc(relDay(k))} <small class="help" style="font:600 13px var(--body)">${fromKey(k).toLocaleDateString([], {month:"short", day:"numeric"})}</small></h3><div class="hours-wrap"><table class="hours">
+      <thead><tr><th>Rep</th><th>Started</th><th>First door</th><th>Last door</th><th>Ended</th><th>Time on</th><th>Doors</th></tr></thead><tbody>
+      ${rows.map(r => {
+        const gap = r.start && r.first ? new Date(r.first) - new Date(r.start) : null;
+        const tail = r.end && r.last ? new Date(r.end) - new Date(r.last) : null;
+        const live = !r.end && r.start && k === todayK;
+        return `<tr><td><b>${esc(r.rep)}</b></td>
+          <td>${r.start ? fmtTime(r.start) : `<span class="no">Didn't start</span>`}</td>
+          <td>${t(r.first)}${gap !== null && gap >= 0 ? `<span class="gap${gap > 30 * 60000 ? " late" : ""}">${hm(gap)} after start</span>` : ""}</td>
+          <td>${t(r.last)}</td>
+          <td>${r.end ? fmtTime(r.end) + (tail !== null && tail >= 0 ? `<span class="gap${tail > 30 * 60000 ? " late" : ""}">${hm(tail)} after last door</span>` : "") : live ? `<span class="live">Still out</span>` : `<span class="no">${r.start ? "Didn't end" : "—"}</span>`}</td>
+          <td>${r.start ? hm((r.end ? new Date(r.end) : live ? new Date() : new Date(r.last || r.start)) - new Date(r.start)) : `<span class="no">—</span>`}</td>
+          <td><b>${r.doors.size}</b>${r.booked ? ` <span class="gap">${r.booked} booked</span>` : ""}</td></tr>`; }).join("")}
+      </tbody></table></div></div>`; }).join("") + `<p class="help" style="text-align:center;margin-top:12px">Times over 30 minutes between starting and the first door, or the last door and ending, are highlighted.</p>`;
 }
 /* ----- company: every team side by side (owners/managers) ----- */
 let coPeriod = "week";
@@ -1579,7 +1684,7 @@ async function fetchTeam(url, pin, force){
   try {
     const r = await fetch(`${url}?key=${encodeURIComponent(pin)}&since=0`);
     const j = await r.json();
-    coCache[url] = j.ok ? {at:Date.now(), doors:(j.doors || []).filter(d => d && !d.deleted && !String(d.id).match(/^[mt]_/)), teamName:j.teamName || ""}
+    coCache[url] = j.ok ? {at:Date.now(), doors:(j.doors || []).filter(d => d && !d.deleted && !String(d.id).match(/^[mts]_/)), teamName:j.teamName || ""}
                         : {at:Date.now(), err: j.error === "pin" ? "That PIN didn't work for this team." : "Couldn't load this team."};
   } catch { coCache[url] = {at:Date.now(), err:"Couldn't reach this team's sheet. Check the connection."}; }
   return coCache[url];
@@ -1715,6 +1820,7 @@ function applyRemote(list){
   for (const rd of list){
     if (!rd || !rd.id || outbox[rd.id]) continue; // our unsent edit wins until it's pushed
     if (rd.id.startsWith("m_") || rd.id.startsWith("t_")){ applyMeta(rd); metaChanged = true; continue; }
+    if (rd.id.startsWith("s_")){ applyShift(rd); continue; }
     const i = doors.findIndex(x => x.id === rd.id);
     if (rd.deleted){
       if (i >= 0){ doors.splice(i, 1); removeMarker(rd.id); changed = true; }

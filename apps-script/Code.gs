@@ -48,6 +48,18 @@ const KINDS = {
     fill: (d, row, h) => { row[h['Name']] = d.name || ''; row[h['Role']] = d.role === 'manager' ? 'Owner / manager' : 'Rep'; },
     onDelete: (row, h, prev) => { row[h['Name']] = (prev && prev.name) || ''; }
   },
+  shift: {
+    sheet: 'Shifts',
+    headers: ['ID', 'Rep', 'Day', 'Started', 'Ended', 'Hours', 'Last updated', 'Deleted', 'Data', 'Server time'],
+    fill: (d, row, h) => {
+      row[h['Rep']] = d.rep || '';
+      row[h['Day']] = d.day ? "'" + d.day : '';
+      row[h['Started']] = d.start ? new Date(d.start) : '';
+      row[h['Ended']] = d.end ? new Date(d.end) : '';
+      row[h['Hours']] = d.start && d.end ? Math.round((new Date(d.end) - new Date(d.start)) / 36e5 * 100) / 100 : '';
+    },
+    onDelete: (row, h, prev) => { row[h['Rep']] = (prev && prev.rep) || ''; }
+  },
   territory: {
     sheet: 'Territories',
     headers: ['ID', 'Name', 'Rep', 'Color', 'Last updated', 'Deleted', 'Data', 'Server time'],
@@ -55,7 +67,7 @@ const KINDS = {
     onDelete: (row, h, prev) => { row[h['Name']] = (prev && prev.name) || ''; }
   }
 };
-const kindOf = id => String(id).indexOf('m_') === 0 ? 'member' : String(id).indexOf('t_') === 0 ? 'territory' : 'door';
+const kindOf = id => { const s = String(id); return s.indexOf('m_') === 0 ? 'member' : s.indexOf('t_') === 0 ? 'territory' : s.indexOf('s_') === 0 ? 'shift' : 'door'; };
 const hmap = headers => Object.fromEntries(headers.map((x, i) => [x, i]));
 
 function out(obj) {
@@ -119,7 +131,7 @@ function doPost(e) {
     let applied = 0;
     const conflicts = [];
     // members first so territory rows can show rep names
-    ['member', 'territory', 'door'].forEach(kind => {
+    ['member', 'territory', 'shift', 'door'].forEach(kind => {
       const mine = changes.filter(c => c && c.id && kindOf(c.id) === kind);
       if (!mine.length) return;
       if (kind !== 'member') _team = null;

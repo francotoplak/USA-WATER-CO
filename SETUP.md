@@ -41,6 +41,10 @@ Any doors already on a tablet are uploaded when you connect it.
 
 If you set up the script before this update (November 6, 2026), paste in the latest [`apps-script/Code.gs`](apps-script/Code.gs), then use **Deploy → Manage deployments → Edit → Version: New version → Deploy**. The link stays the same.
 
+## Start day / End day
+
+Signed-in reps get a **Start day** button at the top of the map. Tapping it clocks them in, and tapping it again ends their day. Owners and managers see a **Hours** tab under Stats. For each rep and each day, it shows when they started, their first door, their last door, when they ended, and their total time. Gaps of more than 30 minutes are highlighted. These times are also saved to a **Shifts** tab in the sheet.
+
 ## Adding another owner's team (for example, Craig in Arizona)
 
 Each owner gets a separate team with its own Google Sheet, Google Calendar, reps and PIN. Doors from one team never land on another team's sheet or calendar.

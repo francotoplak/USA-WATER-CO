@@ -31,6 +31,12 @@ Any doors already on a tablet are uploaded when you connect it.
 - Rep PINs are a convenience to keep people from logging under someone else's name. They're not bank-grade security.
 - The sheet gets **Team** and **Territories** tabs next to **Doors**.
 
+## No double-booking
+
+- Once an appointment is booked, every rep's time picker crosses out the times that overlap it, plus 30 minutes of travel time before and after. Change `TRAVEL_MINUTES` in the script to adjust that gap.
+- Times that are already busy on the owner's Google Calendar (dentist, family stuff, anything) are crossed out too. Set `BLOCK_CALENDAR_BUSY` to `false` to turn that off.
+- If two reps tap Book on the same time at the same moment, the sheet keeps the first one. The second rep gets a message, and their door goes back to Interested so they can pick a new time.
+
 ## Updating the script
 
-If you set up the script before November 6, 2026, paste in the latest [`apps-script/Code.gs`](apps-script/Code.gs), then use **Deploy → Manage deployments → Edit → Version: New version → Deploy**. The link stays the same.
+If you set up the script before this update (November 6, 2026), paste in the latest [`apps-script/Code.gs`](apps-script/Code.gs), then use **Deploy → Manage deployments → Edit → Version: New version → Deploy**. The link stays the same.

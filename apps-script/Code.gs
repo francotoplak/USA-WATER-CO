@@ -9,6 +9,8 @@
 // ---- Settings: change these ----
 const TEAM_PIN = '2468';          // every tablet enters this PIN in Door Log → Settings → Team sync
 const ADD_TO_CALENDAR = true;     // put Booked doors straight on this Google account's calendar
+const TRAVEL_MINUTES = 30;        // gap kept free before and after every appointment
+const BLOCK_CALENDAR_BUSY = true; // reps can't book over other events already on this calendar
 // --------------------------------
 
 const STATUS_LABEL = { nothome: 'Not home', no: 'Not interested', int: 'Interested', booked: 'Booked' };
@@ -102,7 +104,7 @@ function doGet(e) {
       else { try { records.push(JSON.parse(r[h['Data']])); } catch (err) {} }
     });
   });
-  return out({ ok: true, now: Date.now(), calendar: ADD_TO_CALENDAR, doors: records });
+  return out({ ok: true, now: Date.now(), calendar: ADD_TO_CALENDAR, buffer: TRAVEL_MINUTES, busy: calendarBusy(), doors: records });
 }
 
 function doPost(e) {
@@ -114,6 +116,7 @@ function doPost(e) {
   lock.waitLock(25000);
   try {
     let applied = 0;
+    const conflicts = [];
     // members first so territory rows can show rep names
     ['member', 'territory', 'door'].forEach(kind => {
       const mine = changes.filter(c => c && c.id && kindOf(c.id) === kind);
@@ -131,6 +134,10 @@ function doPost(e) {
         let prev = null;
         if (existing && existing[h['Data']]) { try { prev = JSON.parse(existing[h['Data']]); } catch (err) {} }
         if (prev && ch.updatedAt && prev.updatedAt && prev.updatedAt > ch.updatedAt) return; // newest edit wins
+        if (kind === 'door' && !ch.deleted && ch.status === 'booked' && ch.appt) {
+          const clash = findClash(ch, rows, h);
+          if (clash) { conflicts.push({ id: id, by: clash.rep || '', start: clash.appt.start }); return; }
+        }
         const row = new Array(k.headers.length).fill('');
         row[h['ID']] = id;
         row[h['Server time']] = Date.now();
@@ -150,10 +157,42 @@ function doPost(e) {
       });
       if (appended.length) sh.getRange(sh.getLastRow() + 1, 1, appended.length, k.headers.length).setValues(appended);
     });
-    return out({ ok: true, now: Date.now(), applied: applied });
+    return out({ ok: true, now: Date.now(), applied: applied, conflicts: conflicts });
   } finally {
     lock.releaseLock();
   }
+}
+
+// Another booked door whose appointment (plus travel time) overlaps this one
+function findClash(d, rows, h) {
+  const buf = TRAVEL_MINUTES * 60000;
+  const s = new Date(d.appt.start).getTime(), e = s + (Number(d.appt.dur) || 90) * 60000;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (String(r[h['ID']]) === String(d.id) || r[h['Deleted']] === true || !r[h['Data']]) continue;
+    let o; try { o = JSON.parse(r[h['Data']]); } catch (err) { continue; }
+    if (o.status !== 'booked' || !o.appt) continue;
+    const os = new Date(o.appt.start).getTime() - buf, oe = os + buf + (Number(o.appt.dur) || 90) * 60000 + buf;
+    if (s < oe && e > os) return o;
+  }
+  return null;
+}
+
+// Busy times on the owner's calendar for the next 3 weeks, leaving out events this app created
+function calendarBusy() {
+  if (!BLOCK_CALENDAR_BUSY) return [];
+  const cache = CacheService.getScriptCache();
+  const hit = cache.get('busy');
+  if (hit) return JSON.parse(hit);
+  const ours = {};
+  const h = hmap(KINDS.door.headers);
+  readRows(sheetFor('door'), KINDS.door.headers.length).forEach(r => { if (r[h['Calendar event']]) ours[String(r[h['Calendar event']])] = 1; });
+  const now = new Date(), end = new Date(now.getTime() + 21 * 864e5);
+  const busy = CalendarApp.getDefaultCalendar().getEvents(now, end)
+    .filter(ev => !ev.isAllDayEvent() && !ours[ev.getId()])
+    .map(ev => ({ s: ev.getStartTime().getTime(), e: ev.getEndTime().getTime() }));
+  cache.put('busy', JSON.stringify(busy), 60); // refresh at most once a minute
+  return busy;
 }
 
 function syncCalendar(d, eventId) {

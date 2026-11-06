@@ -336,6 +336,11 @@ textarea{min-height:76px;resize:none}
 .dchip[aria-pressed="true"] small{color:rgba(255,255,255,.85)}
 .times{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;padding:10px 14px 0}
 .tchip{border:1.5px solid var(--line);background:var(--surface);border-radius:11px;padding:9px 0;font-weight:700;font-size:14.5px;font-variant-numeric:tabular-nums}
+.tchip.taken{text-decoration:line-through;opacity:.4}
+.dchip .bk{display:block;height:4px;margin:3px auto 0;width:4px;border-radius:2px;background:var(--s-booked)}
+.dchip[aria-pressed="true"] .bk{background:#fff}
+.taken-list{padding:10px 14px 0;font-size:13.5px;color:var(--muted)}
+.taken-list b{color:var(--ink);font-weight:600}
 .tchip[aria-pressed="true"]{background:var(--s-booked);border-color:var(--s-booked);color:#fff}
 .appt-foot{display:flex;gap:10px;align-items:center;padding:12px 14px 0}
 .appt-foot label{font-size:13.5px;color:var(--muted);font-weight:600;white-space:nowrap}
@@ -357,7 +362,7 @@ textarea{min-height:76px;resize:none}
   transition:transform .3s var(--ease),opacity .2s;max-width:calc(100% - 90px - var(--sl) - var(--sr));font-weight:600;font-size:15px}
 .toast.show{transform:none;opacity:1;pointer-events:auto}
 .toast .dot{width:10px;height:10px}
-.toast span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toast span{overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
 .toast button{border:0;background:rgba(255,255,255,.14);color:#8fd3ff;font-weight:700;border-radius:9px;padding:6px 12px;flex:none}
 .toast button[hidden]+span{padding-right:8px}
 
@@ -545,6 +550,7 @@ textarea{min-height:76px;resize:none}
         <div class="appt-h"><b>Appointment</b><span id="apptSummary"></span></div>
         <div class="days" id="dayChips"></div>
         <div class="times" id="timeChips"></div>
+        <div class="taken-list" id="takenList"></div>
         <div class="appt-foot"><label for="fDur">Length</label>
           <select id="fDur"><option value="30">30 min</option><option value="60">1 hour</option><option value="90">1.5 hours</option><option value="120">2 hours</option><option value="180">3 hours</option></select></div>
       </div>
@@ -807,15 +813,30 @@ $("statusBtns").onclick = e => {
 $("moreBtn").onclick = () => { detailsOpen = true; renderStatus(); setTimeout(() => $("fName").focus(), 50); };
 
 /* appointment picker */
+// Times the owner is already busy: other booked doors (plus travel time) and his own calendar events
+function busyBlocks(exceptId){
+  const buf = (sync.buffer ?? 30) * 60000;
+  const out = doors.filter(d => d.status === "booked" && d.appt && d.id !== exceptId).map(d => {
+    const s = new Date(d.appt.start).getTime(); return {s:s - buf, e:s + d.appt.dur*60000 + buf, door:d};
+  });
+  for (const b of sync.busy || []) out.push({s:b.s - buf, e:b.e + buf, cal:true});
+  return out;
+}
+function slotTaken(startMs, durMin, blocks){
+  const e = startMs + durMin*60000;
+  return blocks.find(b => startMs < b.e && e > b.s) || null;
+}
 function renderAppt(){
   const days = []; const base = new Date(); base.setHours(0,0,0,0);
   for (let i = 0; i < 21; i++){ const d = new Date(base); d.setDate(d.getDate()+i); days.push(d); }
   if (!apptDay){ const t = new Date(base); t.setDate(t.getDate()+1); apptDay = dayKey(t); }
   if (!days.some(d => dayKey(d) === apptDay)) days.unshift(fromKey(apptDay));
+  const blocks = busyBlocks(editing?.id), dur = +$("fDur").value || 90;
   $("dayChips").innerHTML = days.map((d, i) => {
     const k = dayKey(d);
     const top = i === 0 && k === dayKey(base) ? "Today" : d.toLocaleDateString([], {weekday:"short"});
-    return `<button type="button" class="dchip press" data-k="${k}" aria-pressed="${k === apptDay}"><small>${top}</small><b>${d.getDate()}</b><small>${d.toLocaleDateString([], {month:"short"})}</small></button>`;
+    const n = blocks.filter(b => b.door && dayKey(b.door.appt.start) === k).length;
+    return `<button type="button" class="dchip press" data-k="${k}" aria-pressed="${k === apptDay}" title="${n} booked"><small>${top}</small><b>${d.getDate()}</b><small>${d.toLocaleDateString([], {month:"short"})}</small>${n ? '<i class="bk"></i>' : ""}</button>`;
   }).join("");
   const times = []; for (let h = 8; h <= 19; h++) for (const m of [0, 30]) times.push(`${z(h)}:${z(m)}`);
   if (apptTime && !times.includes(apptTime)) times.push(apptTime), times.sort();
@@ -823,8 +844,16 @@ function renderAppt(){
   $("timeChips").innerHTML = times.map(t => {
     const [h, m] = t.split(":").map(Number); const d = new Date(); d.setHours(h, m, 0, 0);
     const past = isToday && d < now;
-    return `<button type="button" class="tchip press" data-t="${t}" aria-pressed="${t === apptTime}" ${past ? "disabled style=\"opacity:.35\"" : ""}>${d.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}).replace(" ", "\u202f")}</button>`;
+    const taken = slotTaken(new Date(`${apptDay}T${t}`).getTime(), dur, blocks);
+    if (taken && t === apptTime) apptTime = null;
+    const why = taken ? (taken.door ? `Taken: ${taken.door.name || taken.door.address.split(",")[0] || "appointment"}${taken.door.rep ? " (" + taken.door.rep + ")" : ""}` : "Owner is busy") : "";
+    return `<button type="button" class="tchip press${taken ? " taken" : ""}" data-t="${t}" aria-pressed="${t === apptTime}" ${past || taken ? "disabled" : ""} ${past ? 'style="opacity:.35"' : ""} title="${esc(why)}">${d.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}).replace(" ", "\u202f")}</button>`;
   }).join("");
+  const today = blocks.filter(b => b.door && dayKey(b.door.appt.start) === apptDay).sort((a, b) => a.s - b.s);
+  const cal = blocks.filter(b => b.cal && dayKey(b.s + (sync.buffer ?? 30)*60000) === apptDay).length;
+  $("takenList").innerHTML = today.length || cal
+    ? "Already booked this day: " + today.map(b => `<b>${fmtTime(b.door.appt.start)}</b> ${esc(b.door.name || b.door.address.split(",")[0] || "")}${b.door.rep ? " (" + esc(b.door.rep) + ")" : ""}`).join(", ") + (cal ? `${today.length ? ", plus " : ""}${cal} on the owner's calendar` : "") + `. Crossed-out times overlap these, with ${sync.buffer ?? 30} min travel time.`
+    : "";
   apptSummary();
   const sel = $("dayChips").querySelector('[aria-pressed="true"]');
   if (sel) $("dayChips").scrollLeft = Math.max(0, sel.offsetLeft - 14);
@@ -834,6 +863,7 @@ function apptSummary(){
 }
 $("dayChips").onclick = e => { const b = e.target.closest(".dchip"); if (!b) return; apptDay = b.dataset.k;
   if (apptTime && apptDay === dayKey(new Date()) && new Date(`${apptDay}T${apptTime}`) < new Date()) apptTime = null; renderAppt(); };
+$("fDur").addEventListener("change", () => { if (editing?.status === "booked") renderAppt(); });
 $("timeChips").onclick = e => { const b = e.target.closest(".tchip"); if (!b || b.disabled) return; apptTime = b.dataset.t;
   $("timeChips").querySelectorAll(".tchip").forEach(x => x.setAttribute("aria-pressed", x === b)); apptSummary(); };
 
@@ -845,6 +875,7 @@ function commit(){
   d.address = $("fAddr").value.trim() || d.address; d.name = $("fName").value.trim(); d.phone = $("fPhone").value.trim(); d.notes = $("fNotes").value.trim();
   if (d.status === "booked"){
     if (!apptDay || !apptTime){ toast("Pick a day and time for the appointment."); $("apptBox").scrollIntoView({behavior:"smooth", block:"nearest"}); return; }
+    if (slotTaken(new Date(`${apptDay}T${apptTime}`).getTime(), +$("fDur").value, busyBlocks(d.id))){ apptTime = null; renderAppt(); toast("That time was just taken. Pick another."); return; }
     d.appt = {start:new Date(`${apptDay}T${apptTime}`).toISOString(), dur:+$("fDur").value};
   } else d.appt = null;
   const fv = $("fFollow").value;
@@ -1520,6 +1551,7 @@ async function syncNow(manual){
       const j = await r.json();
       if (!j.ok) throw new Error(j.error === "pin" ? "Wrong team PIN." : "The sheet rejected the update.");
       for (const c of sent){ if (outbox[c.id] && outbox[c.id].updatedAt === c.updatedAt) delete outbox[c.id]; }
+      for (const cf of j.conflicts || []) bookingConflict(cf);
       saveOutbox();
     }
     // 2. pull everyone else's changes
@@ -1529,6 +1561,8 @@ async function syncNow(manual){
     applyRemote(j2.doors || []);
     sync.cursor = j2.now; store.set("doorlog.cursor", j2.now);
     sync.calendar = !!j2.calendar; store.set("doorlog.serverCal", sync.calendar);
+    if (Array.isArray(j2.busy)){ sync.busy = j2.busy; store.set("doorlog.busy", j2.busy); }
+    if (typeof j2.buffer === "number"){ sync.buffer = j2.buffer; store.set("doorlog.buffer", j2.buffer); }
     lastSync = Date.now(); store.set("doorlog.lastSync", lastSync);
     busy = false; setSync(Object.keys(outbox).length ? "pending" : "ok", "");
     if (manual) toast("Synced");
@@ -1562,6 +1596,18 @@ function applyRemote(list){
   else if (changed) drawTerritories();
 }
 sync.calendar = store.get("doorlog.serverCal", false);
+sync.busy = store.get("doorlog.busy", []);
+{ const b = store.get("doorlog.buffer", null); if (typeof b === "number") sync.buffer = b; }
+// The sheet refused a booking because another rep took that time first
+function bookingConflict(cf){
+  const d = doors.find(x => x.id === cf.id); if (!d) return;
+  const when = d.appt ? fmtAppt(d.appt) : "that time";
+  d.status = "int"; d.appt = null; d.followUp = new Date().toISOString(); d.updatedAt = new Date().toISOString();
+  d.history = [...(d.history || []), {s:"int", at:d.updatedAt}];
+  saveDoors(); drawDoor(d); queueChange(d); refreshCounts();
+  toast(`${when} was already taken${cf.by ? " by " + cf.by : ""}. ${d.name || "This door"} is back to Interested. Pick a new time.`, "int");
+  if (!sheet.classList.contains("open")){ openDoor(d.id); }
+}
 setInterval(() => { if (document.visibilityState === "visible") syncNow(); }, 15000);
 setInterval(() => { if (syncState === "ok") setSync("ok"); }, 30000);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") syncNow(); });

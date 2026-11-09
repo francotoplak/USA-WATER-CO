@@ -1,3 +1,5 @@
 {
-  "teams": {}
+  "teams": {
+    "FL": { "name": "USA Water Co", "url": "https://script.google.com/macros/s/AKfycbwp3W9Eg7s2BnpWFzroxbVCFp-_PIB26NoqXoXQppwmkGjos1kk82bGWkbtdBSKU2s/exec" }
+  }
 }

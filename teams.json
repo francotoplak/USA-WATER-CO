@@ -1,5 +1,6 @@
 {
   "teams": {
-    "FL": { "name": "USA Water Co", "url": "https://script.google.com/macros/s/AKfycbwp3W9Eg7s2BnpWFzroxbVCFp-_PIB26NoqXoXQppwmkGjos1kk82bGWkbtdBSKU2s/exec" }
+    "FL": { "name": "USA Water Co", "url": "https://script.google.com/macros/s/AKfycbwp3W9Eg7s2BnpWFzroxbVCFp-_PIB26NoqXoXQppwmkGjos1kk82bGWkbtdBSKU2s/exec" },
+    "AZ": { "name": "USA Water Co · Arizona", "url": "https://script.google.com/macros/s/AKfycbychYnKZXAa7RlN2JBhy9d_GYAi4z1pP4mHYD5gD4g0O4VCfyll9KXLHamFgy8ZyNg1-w/exec" }
   }
 }
